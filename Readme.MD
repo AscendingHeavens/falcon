@@ -1,0 +1,235 @@
+# Falcon Framework (Go) V2.0.4
+
+<p align="center">
+  <img src="./falcon-logo.jpg" alt="Falcon Logo" width="200">
+</p>
+
+
+A minimal, high-performance Go web framework designed for clarity, speed, and decisive handling of HTTP requests. Inspired by Gin and Echo, Falcon emphasizes explicit error handling, easy middleware composition, route groups, and ergonomic access to path and query parameters.
+
+> [GO DOCS](https://pkg.go.dev/github.com/ascendingheavens/falcon)  
+Note: This repository was transferred to AscendingHeavens/falcon. Due to Go module proxy caching, the official Go docs still point to the original path because the module was already published and tagged under the old repository.
+
+---
+
+## Features
+
+* Routing with HTTP methods: GET, POST, PUT, PATCH, DELETE
+* Route groups with middleware inheritance
+* Global and conditional middleware (use on specific routes or patterns)
+* Explicit error handling via `*Response` objects
+* Automatic JSON response encoding
+* Panic recovery middleware
+* Profiling middleware with memory stats and execution time
+* Path parameters (`/users/:id`) via `c.Param("id")`
+* Query parameters via `c.Query("key")`
+* Body binding with fail-fast: `Bind` / `BindJSON`
+* Optional error-return binding: `ShouldBind` / `ShouldBindJSON`
+
+---
+
+## Installation
+
+```bash
+go get github.com/ascendingheavens/falcon
+```
+
+---
+
+## Usage
+
+```go
+package main
+
+import (
+	"net/http"
+
+	falcon "github.com/ascendingheavens/falcon"
+	"github.com/ascendingheavens/falcon/middleware"
+)
+
+func main() {
+	app := falcon.New()
+
+	// Global middlewares
+	app.Use(middleware.Logger())
+	app.Use(middleware.Recovery())
+	app.Use(middleware.ProfilingMiddleware())
+
+	// Conditional middleware
+	app.UseIf("/api/v1/*", AuthMiddleware())
+
+	// Top-level route
+	app.GET("/ping", func(c *falcon.Context) *falcon.Response {
+		return &falcon.Response{Success: true, Message: "pong", Code: 200}
+	})
+	app.GET("/search", func(c *falcon.Context) *falcon.Response {
+		q := c.Query("q")
+		return &falcon.Response{
+			Success: true,
+			Message: "Query received",
+			Details: map[string]string{"query": q},
+			Code:    200,
+		}
+	})
+
+	app.GET("/html", func(c *falcon.Context) *falcon.Response {
+		return c.HTML(200, "<h1>Serving HTML via Falcon</h1>") // send file content as HTML
+	})
+
+	app.GET("/docs", func(c *falcon.Context) *falcon.Response {
+		return c.Redirect(302, "https://google.com")
+	})
+
+	// Route group
+	v1 := app.Group("/api/v1")
+	v1.GET("/users/:id", func(c *falcon.Context) *falcon.Response {
+		id := c.Param("id")
+		return &falcon.Response{Success: true, Message: "User found", Details: map[string]string{"id": id}, Code: 200}
+	})
+
+	auth := app.Group("/auth")
+	auth.POST("/signup", Signup)
+	auth.GET("/users/:id", func(c *falcon.Context) *falcon.Response {
+		id := c.Param("id")
+		return &falcon.Response{
+			Success: true,
+			Message: "User found",
+			Details: map[string]string{"id": id},
+			Code:    200,
+		}
+	})
+
+	// Start server
+	app.Start(":8080")
+}
+
+func AuthMiddleware() falcon.Middleware {
+	return func(next falcon.HandlerFunc) falcon.HandlerFunc {
+		return func(c *falcon.Context) *falcon.Response {
+			if c.Request.Header.Get("Authorization") == "" {
+				return &falcon.Response{
+					Success: false,
+					Message: "Unauthorized",
+					Code:    401,
+				}
+			}
+			return next(c)
+		}
+	}
+}
+
+func Signup(ctx *falcon.Context) *falcon.Response {
+	var req struct{}
+	if err := ctx.BindJSON(&req); err != nil {
+		return nil
+	}
+	return &falcon.Response{
+		Message: "Signup successful",
+		Success: true,
+		Code:    http.StatusOK,
+	}
+}
+
+```
+
+---
+
+## Middleware Examples
+
+### Logger
+
+Logs request method, path, response status, and execution time.
+
+### Recovery
+
+Catches panics and prevents server crash.
+
+### Profiling
+
+Logs request duration and memory usage.
+
+---
+
+## Response & Error Handling
+
+Handlers return `*falcon.Response` objects:
+
+```go
+return &falcon.Response{
+    Success: true,
+    Message: "OK",
+    Details: map[string]string{"id": id},
+    Code: 200,
+}
+```
+
+Fail-fast body binding automatically sends `400 Bad Request`:
+
+```go
+ctx.BindJSON(&req) // on failure, JSON 400 response sent
+```
+
+For custom error handling, use `ShouldBindJSON` and return your own response.
+
+---
+
+## Query & Path Params
+
+```go
+q := c.Query("q")       // /search?q=golang
+id := c.Param("id")      // /users/:id
+```
+
+---
+
+## Future Enhancements
+
+* Form/url-encoded body support
+* Validation helpers
+* More built-in middleware (JWT, etc.)
+* Advanced profiling and metrics
+* Testing
+---
+## Contributions
+
+Contributions to Falcon are welcome and encouraged! Here's how you can help:
+
+### Reporting Issues
+
+* Open an issue on GitHub if you find bugs, unexpected behavior, or have feature requests.
+* Provide clear reproduction steps and examples whenever possible.
+
+### Code Contributions
+
+1. **Fork the repository**.
+2. **Create a new branch** for your feature or bug fix: `git checkout -b feature/my-feature`.
+3. **Write tests** for your changes.
+4. **Make your changes** following the project's coding standards.
+5. **Run all tests** locally to ensure nothing breaks.
+6. **Commit your changes** with clear and descriptive messages.
+7. **Push your branch** to your fork.
+8. **Open a pull request** against the `main` branch of the main repository.
+
+### Documentation
+
+* Improve documentation, examples, or guides.
+* Correct typos or clarify confusing explanations.
+
+### Code Reviews
+
+* Review open pull requests and provide feedback.
+* Test new features and verify fixes.
+
+### Style & Standards
+
+* Follow Go idiomatic practices.
+* Keep commits focused and concise.
+* Write descriptive commit messages.
+
+We appreciate all contributions, big or small, and they help make Falcon better for everyone!
+
+
+
+## License
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
