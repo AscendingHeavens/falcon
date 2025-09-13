@@ -1,7 +1,7 @@
 # Falcon Framework (Go) V1.0.5
 
 <p align="center">
-  <img src="./falcon_logo.jpg" alt="Falcon Logo" width="200">
+  <img src="./falcon.png" alt="Falcon Logo" width="200">
 </p>
 
 
