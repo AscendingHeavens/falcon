@@ -1,4 +1,4 @@
-package onestrike
+package falcon
 
 import (
 	"encoding/json"
@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ascendingheavens/onestrike/server"
+	"github.com/ascendingheavens/falcon/server"
 	"github.com/stretchr/testify/assert"
 )
 

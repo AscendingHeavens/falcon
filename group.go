@@ -1,9 +1,9 @@
-package onestrike
+package falcon
 
 import (
 	"net/http"
 
-	"github.com/ascendingheavens/onestrike/middleware"
+	"github.com/ascendingheavens/falcon/middleware"
 )
 
 // Group represents a collection of routes sharing a common prefix
