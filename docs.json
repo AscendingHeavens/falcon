@@ -2,11 +2,13 @@
   "types": [
     {
       "name": "ConditionalMiddleware",
-      "doc": "ConditionalMiddleware is an alias to middleware.ConditionalMiddleware,\nwhich pairs a pattern (e.g., \"/api/*\") with a Middleware function.\n"
+      "doc": "ConditionalMiddleware is an alias to middleware.ConditionalMiddleware,\nwhich pairs a pattern (e.g., \"/api/*\") with a Middleware function.\n",
+      "package": "falcon"
     },
     {
       "name": "Context",
-      "doc": "Context is an alias to server.Context, which wraps the request and response\nwriter and provides convenience methods (params, body parsing, etc.).\n"
+      "doc": "Context is an alias to server.Context, which wraps the request and response\nwriter and provides convenience methods (params, body parsing, etc.).\n",
+      "package": "falcon"
     },
     {
       "name": "Group",
@@ -40,19 +42,23 @@
           "name": "Use",
           "doc": "Use registers a middleware for this specific group.\nThese middlewares are applied only to routes within the group,\nin addition to any global middleware from the parent server.\n"
         }
-      ]
+      ],
+      "package": "falcon"
     },
     {
       "name": "HandlerFunc",
-      "doc": "HandlerFunc is an alias to server.HandlerFunc, the function signature\nthat route handlers must implement. It takes a *Context and returns a *Response.\n"
+      "doc": "HandlerFunc is an alias to server.HandlerFunc, the function signature\nthat route handlers must implement. It takes a *Context and returns a *Response.\n",
+      "package": "falcon"
     },
     {
       "name": "Middleware",
-      "doc": "Middleware is an alias to middleware.Middleware, representing a function\nthat wraps and modifies a HandlerFunc, similar to how middleware works\nin frameworks like Express or Fiber.\n"
+      "doc": "Middleware is an alias to middleware.Middleware, representing a function\nthat wraps and modifies a HandlerFunc, similar to how middleware works\nin frameworks like Express or Fiber.\n",
+      "package": "falcon"
     },
     {
       "name": "Response",
-      "doc": "Response is an alias to server.Response, the unified return type\nfrom every handler function. Encoded as JSON and written to the client.\n"
+      "doc": "Response is an alias to server.Response, the unified return type\nfrom every handler function. Encoded as JSON and written to the client.\n",
+      "package": "falcon"
     },
     {
       "name": "Server",
@@ -114,21 +120,202 @@
           "name": "UseIf",
           "doc": "UseIf registers a conditional middleware that only runs if the request path\nmatches the given pattern. Patterns can include a wildcard '*' at the end.\nExample: UseIf(\"/api/v1/*\", AuthMiddleware())\n"
         }
-      ]
+      ],
+      "package": "falcon"
     },
     {
       "name": "TLSStarter",
-      "doc": "TLSStarter defines an interface for starting a TLS server.\nImplementations should provide the startTLSServer method to handle\nthe server startup logic for HTTPS.\n"
+      "doc": "TLSStarter defines an interface for starting a TLS server.\nImplementations should provide the startTLSServer method to handle\nthe server startup logic for HTTPS.\n",
+      "package": "falcon"
     },
     {
       "name": "TemplateRenderer",
-      "doc": "TemplateRenderer is an alias for server.TemplateRenderer.\nIt is responsible for rendering HTML templates within Falcon.\n"
+      "doc": "TemplateRenderer is an alias for server.TemplateRenderer.\nIt is responsible for rendering HTML templates within Falcon.\n",
+      "package": "falcon"
+    },
+    {
+      "name": "CORSConfig",
+      "doc": "CORSConfig defines configuration for Cross-Origin Resource Sharing (CORS).\nAllows specifying which origins, headers, and methods are permitted.\n",
+      "package": "middleware"
+    },
+    {
+      "name": "CSRFConfig",
+      "doc": "CSRFConfig defines configuration for CSRF protection middleware.\n",
+      "package": "middleware"
+    },
+    {
+      "name": "ConditionalMiddleware",
+      "doc": "ConditionalMiddleware pairs a middleware with a path pattern.\nThe middleware is only applied if the request path matches the pattern.\nPatterns can include a wildcard '*' at the end to match any subpath.\n",
+      "package": "middleware"
+    },
+    {
+      "name": "Middleware",
+      "doc": "Middleware defines the function signature for all middleware in Falcon.\nA middleware wraps a HandlerFunc, allowing pre- or post-processing of requests.\nExamples include logging, authentication, profiling, or panic recovery.\n",
+      "package": "middleware"
+    },
+    {
+      "name": "ValidationConfig",
+      "doc": "ValidationConfig holds configuration for the validation middleware.\nAllows injecting a custom validator instance (from go-playground/validator/v10).\n",
+      "package": "middleware"
+    },
+    {
+      "name": "TestStruct",
+      "doc": "",
+      "package": "server_test"
+    },
+    {
+      "name": "Context",
+      "doc": "Context wraps http.ResponseWriter and *http.Request, providing\nconvenience access to route parameters and helper methods in the future.\nFields:\n  - Writer: the http.ResponseWriter to write responses.\n  - Request: the incoming HTTP request.\n  - Params: a map of path parameters extracted from the route (e.g., \":id\").\n",
+      "methods": [
+        {
+          "name": "Bind",
+          "doc": "Bind reads the request body and decodes it into dest based on Content-Type.\nAutomatically writes a 400 Bad Request response if binding fails.\n"
+        },
+        {
+          "name": "BindForm",
+          "doc": "BindForm parses form data and binds it to a map\nTakes only the first value for each key\n"
+        },
+        {
+          "name": "BindFormAll",
+          "doc": "BindFormAll parses URL-encoded form data and returns all values in a url.Values map.\n"
+        },
+        {
+          "name": "BindJSON",
+          "doc": "BindJSON enforces JSON Content-Type and decodes into dest.\nAutomatically writes 400 response on error.\n"
+        },
+        {
+          "name": "BindXML",
+          "doc": "BindXML enforces XML Content-Type and decodes into dest.\nAutomatically writes 400 response on error.\n"
+        },
+        {
+          "name": "Blob",
+          "doc": "Blob writes raw binary data with the given Content-Type and returns a Response\nExample: c.Blob(200, data, \"image/png\")\n"
+        },
+        {
+          "name": "ErrorJSON",
+          "doc": "ErrorJSON writes an error response as JSON with the provided status code.\nIf c.Handled is already true, it returns the Response without writing to the client.\n"
+        },
+        {
+          "name": "File",
+          "doc": "File serves a file from disk with proper Content-Type.\nIf file doesn't exist or can't be read, returns a 404/500 JSON response.\n"
+        },
+        {
+          "name": "FormFile",
+          "doc": "FormFile retrieves the file from a multipart form.\nIt returns the first file for the provided form key.\nExample: \u003cinput type=\"file\" name=\"avatar\" /\u003e -\u003e c.FormFile(\"avatar\")\n"
+        },
+        {
+          "name": "FormValue",
+          "doc": "FormValue returns the first value for the named component of the POST or PUT request body.\nIt calls ParseMultipartForm and ParseForm if necessary.\nExample: \u003cinput type=\"text\" name=\"username\" /\u003e -\u003e c.FormValue(\"username\")\n"
+        },
+        {
+          "name": "Get",
+          "doc": "Get retrieves a value from the Context by key.\nReturns nil if the key does not exist.\nExample: user := c.Get(\"user\")\n"
+        },
+        {
+          "name": "HTML",
+          "doc": "HTML writes HTML content and returns a Response\nExample: c.HTML(200, \"\u003ch1\u003eHello\u003c/h1\u003e\")\n"
+        },
+        {
+          "name": "JSON",
+          "doc": "JSON writes the given Response object as JSON with the provided status code.\nThis method respects c.Handled, so it won't write twice if something else already wrote.\n"
+        },
+        {
+          "name": "Param",
+          "doc": "Param returns the value of a path parameter by name.\nExample: /users/:id -\u003e c.Param(\"id\") returns \"123\"\n"
+        },
+        {
+          "name": "Query",
+          "doc": "Query returns the first value of a URL query parameter by key.\nExample: /search?q=golang -\u003e c.Query(\"q\") returns \"golang\"\n"
+        },
+        {
+          "name": "QueryArray",
+          "doc": "QueryArray returns all values for a query parameter key.\nExample: /filter?tag=go\u0026tag=web -\u003e c.QueryArray(\"tag\") returns []string{\"go\", \"web\"}\n"
+        },
+        {
+          "name": "Redirect",
+          "doc": "Redirect sends an HTTP redirect to the specified location.\n"
+        },
+        {
+          "name": "Render",
+          "doc": "Render is a helper on Context to render templates using a TemplateRenderer.\nIt sets the response code, handles errors, and ensures the response\nis only written once per request.\n\nParameters:\n  - renderer: the TemplateRenderer to use for rendering\n  - code: HTTP status code for the response\n  - name: template name to render\n  - data: data to pass into the template\n\nReturns a *Response indicating success or failure.\n"
+        },
+        {
+          "name": "Set",
+          "doc": "Set stores a value in the Context under the specified key.\nExample: c.Set(\"user\", claims)\n"
+        },
+        {
+          "name": "ShouldBind",
+          "doc": "ShouldBind attempts to decode the request body into dest based on Content-Type\nwithout automatically writing an error response.\n"
+        },
+        {
+          "name": "ShouldBindForm",
+          "doc": "ShouldBindForm binds application/x-www-form-urlencoded form values into a struct.\n"
+        },
+        {
+          "name": "ShouldBindJSON",
+          "doc": "ShouldBindJSON decodes JSON without automatic error response.\n"
+        },
+        {
+          "name": "ShouldBindMultipart",
+          "doc": "ShouldBindMultipart binds multipart form to struct.\n"
+        },
+        {
+          "name": "ShouldBindXML",
+          "doc": "ShouldBindXML decodes XML without automatic error response.\n"
+        },
+        {
+          "name": "String",
+          "doc": "String writes plain text and returns a Response\nExample: c.String(200, \"Hello World\")\n"
+        },
+        {
+          "name": "Validate",
+          "doc": "Validate runs validation on the target struct using the stored validator\nIf none exists, it creates a default one on-the-fly\n"
+        }
+      ],
+      "package": "server"
+    },
+    {
+      "name": "HandlerFunc",
+      "doc": "HandlerFunc defines the signature for all route handlers in Falcon.\nEvery handler receives a pointer to a Context and returns a pointer to a Response.\nThe framework automatically writes the Response as JSON to the client.\n",
+      "package": "server"
+    },
+    {
+      "name": "Response",
+      "doc": "Response is the unified return type for all handlers in Falcon.\nIt is automatically serialized to JSON and written to the client.\nFields:\n  - Success: indicates whether the request was successful.\n  - Message: human-readable message describing the result.\n  - Details: optional field containing extra data (any type).\n  - Code: HTTP status code to be sent to the client. It's Required to have at least one Status code\n",
+      "package": "server"
+    },
+    {
+      "name": "Router",
+      "doc": "Router is a minimal HTTP router that supports method-based routing\nand simple path parameters (e.g., /users/:id).\n",
+      "methods": [
+        {
+          "name": "FindHandler",
+          "doc": "FindHandler attempts to match an incoming request (method + path)\nagainst the registered routes. It supports simple path parameters\nlike \"/users/:id\" and extracts them into a map.\nReturns the matching HandlerFunc and a map of extracted params.\nIf no match is found, it returns (nil, nil).\n"
+        },
+        {
+          "name": "Handle",
+          "doc": "Handle registers a new route with a specific HTTP method, path, and handler.\n"
+        }
+      ],
+      "package": "server"
+    },
+    {
+      "name": "TemplateRenderer",
+      "doc": "TemplateRenderer manages HTML templates for rendering in Falcon.\nIt supports thread-safe access and optional development mode for live reloading.\n",
+      "methods": [
+        {
+          "name": "Render",
+          "doc": "Render executes the template with the given name and data, writing\nthe output to the provided http.ResponseWriter.\nIn dev mode, templates are reloaded on each render.\n"
+        }
+      ],
+      "package": "server"
     }
   ],
   "functions": [
     {
       "name": "NewTemplateRenderer",
-      "doc": "NewTemplateRenderer Encapsulates server.NewTemplateRenderer\n"
+      "doc": "NewTemplateRenderer Encapsulates server.NewTemplateRenderer\n",
+      "package": "falcon"
     }
   ]
 }
