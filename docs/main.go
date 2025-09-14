@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"go/ast"
 	"go/doc"
 	"go/parser"
+	"go/printer"
 	"go/token"
 	"io/fs"
 	"log"
@@ -17,7 +20,8 @@ type DocEntry struct {
 	Name    string     `json:"name"`
 	Doc     string     `json:"doc"`
 	Methods []DocEntry `json:"methods,omitempty"`
-	Package string     `json:"package,omitempty"` // subpackage name
+	Package string     `json:"package,omitempty"`
+	Code    string     `json:"code,omitempty"` // <-- code snippet
 }
 
 type Docs struct {
@@ -33,6 +37,13 @@ func isExported(name string) bool {
 		return unicode.IsUpper(r)
 	}
 	return false
+}
+
+// convert an ast.Decl to Go code
+func snippetFromDecl(fs *token.FileSet, decl ast.Decl) string {
+	var buf bytes.Buffer
+	printer.Fprint(&buf, fs, decl)
+	return buf.String()
 }
 
 func parsePackage(path string, fsSet *token.FileSet) (*Docs, error) {
@@ -54,6 +65,7 @@ func parsePackage(path string, fsSet *token.FileSet) (*Docs, error) {
 				Name:    t.Name,
 				Doc:     t.Doc,
 				Package: pkgName,
+				Code:    snippetFromDecl(fsSet, t.Decl),
 			}
 
 			for _, m := range t.Methods {
@@ -63,6 +75,7 @@ func parsePackage(path string, fsSet *token.FileSet) (*Docs, error) {
 				entry.Methods = append(entry.Methods, DocEntry{
 					Name: m.Name,
 					Doc:  m.Doc,
+					Code: snippetFromDecl(fsSet, m.Decl),
 				})
 			}
 			docs.Types = append(docs.Types, entry)
@@ -70,13 +83,14 @@ func parsePackage(path string, fsSet *token.FileSet) (*Docs, error) {
 
 		// Functions
 		for _, f := range p.Funcs {
-			if !isExported(f.Name) || f.Doc == "" || len(f.Name) >= 4 && f.Name[:4] == "Test" {
+			if !isExported(f.Name) || f.Doc == "" || (len(f.Name) >= 4 && f.Name[:4] == "Test") {
 				continue
 			}
 			docs.Functions = append(docs.Functions, DocEntry{
 				Name:    f.Name,
 				Doc:     f.Doc,
 				Package: pkgName,
+				Code:    snippetFromDecl(fsSet, f.Decl),
 			})
 		}
 	}
@@ -88,7 +102,6 @@ func main() {
 	fsSet := token.NewFileSet()
 	finalDocs := Docs{}
 
-	// Walk all subdirectories
 	err := filepath.WalkDir("./", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -97,14 +110,13 @@ func main() {
 			return nil
 		}
 
-		// Skip hidden directories like .git
+		// Skip hidden directories
 		if d.Name() == ".git" || d.Name() == "node_modules" || d.Name() == "example" || d.Name() == "docs" {
 			return filepath.SkipDir
 		}
 
 		pkgDocs, err := parsePackage(path, fsSet)
 		if err != nil {
-			// Not a Go package? skip silently
 			return nil
 		}
 
@@ -126,5 +138,5 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Full docs.json generated with all subpackages!")
+	fmt.Println("Full docs.json generated with all subpackages and code snippets!")
 }
