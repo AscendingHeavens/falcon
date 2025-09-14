@@ -12,6 +12,9 @@ import (
 )
 
 // New creates a new Falcon Server instance with an empty router and middleware stack.
+// Example:
+//
+//	server := falcon.New()
 func New() *Server {
 	return &Server{
 		router:      server.NewRouter(),
@@ -20,6 +23,10 @@ func New() *Server {
 }
 
 // Use registers a global middleware that will run on every request.
+// Middleware is executed in the order it is added.
+// Example:
+//
+//	server.Use(middleware.CORS())
 func (s *Server) Use(mw middleware.Middleware) {
 	s.middlewares = append(s.middlewares, mw)
 }
@@ -44,19 +51,32 @@ func (s *Server) Handle(method, path string, handler server.HandlerFunc) {
 	s.router.Handle(method, path, combined)
 }
 
-// Convenience methods for each HTTP method.
+// GET registers a route with the HTTP GET method on the server.
+// The handler is invoked when a request matches the given path.
 func (s *Server) GET(path string, handler server.HandlerFunc) {
 	s.Handle(http.MethodGet, path, handler)
 }
+
+// POST registers a route with the HTTP POST method on the server.
+// The handler is invoked when a request matches the given path.
 func (s *Server) POST(path string, handler server.HandlerFunc) {
 	s.Handle(http.MethodPost, path, handler)
 }
+
+// PUT registers a route with the HTTP PUT method on the server.
+// The handler is invoked when a request matches the given path.
 func (s *Server) PUT(path string, handler server.HandlerFunc) {
 	s.Handle(http.MethodPut, path, handler)
 }
+
+// PATCH registers a route with the HTTP PATCH method on the server.
+// The handler is invoked when a request matches the given path.
 func (s *Server) PATCH(path string, handler server.HandlerFunc) {
 	s.Handle(http.MethodPatch, path, handler)
 }
+
+// DELETE registers a route with the HTTP DELETE method on the server.
+// The handler is invoked when a request matches the given path.
 func (s *Server) DELETE(path string, handler server.HandlerFunc) {
 	s.Handle(http.MethodDelete, path, handler)
 }

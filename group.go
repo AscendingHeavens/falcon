@@ -45,9 +45,32 @@ func (g *Group) Handle(method, path string, handler HandlerFunc) {
 	g.Server.router.Handle(method, fullPath, combined)
 }
 
-// Convenience methods for common HTTP methods for group routes.
-func (g *Group) GET(path string, handler HandlerFunc)    { g.Handle(http.MethodGet, path, handler) }
-func (g *Group) POST(path string, handler HandlerFunc)   { g.Handle(http.MethodPost, path, handler) }
-func (g *Group) PUT(path string, handler HandlerFunc)    { g.Handle(http.MethodPut, path, handler) }
-func (g *Group) PATCH(path string, handler HandlerFunc)  { g.Handle(http.MethodPatch, path, handler) }
-func (g *Group) DELETE(path string, handler HandlerFunc) { g.Handle(http.MethodDelete, path, handler) }
+// GET registers a route with the HTTP GET method for this group.
+// The handler is invoked when a request matches the given path.
+func (g *Group) GET(path string, handler HandlerFunc) {
+	g.Handle(http.MethodGet, path, handler)
+}
+
+// POST registers a route with the HTTP POST method for this group.
+// The handler is invoked when a request matches the given path.
+func (g *Group) POST(path string, handler HandlerFunc) {
+	g.Handle(http.MethodPost, path, handler)
+}
+
+// PUT registers a route with the HTTP PUT method for this group.
+// The handler is invoked when a request matches the given path.
+func (g *Group) PUT(path string, handler HandlerFunc) {
+	g.Handle(http.MethodPut, path, handler)
+}
+
+// PATCH registers a route with the HTTP PATCH method for this group.
+// The handler is invoked when a request matches the given path.
+func (g *Group) PATCH(path string, handler HandlerFunc) {
+	g.Handle(http.MethodPatch, path, handler)
+}
+
+// DELETE registers a route with the HTTP DELETE method for this group.
+// The handler is invoked when a request matches the given path.
+func (g *Group) DELETE(path string, handler HandlerFunc) {
+	g.Handle(http.MethodDelete, path, handler)
+}

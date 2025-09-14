@@ -17,8 +17,8 @@ const (
 	maxMemorySize = 32 << 20 // 32MB for multipart
 )
 
-// Bind reads request body and decodes based on Content-Type.
-// Automatically writes 400 response on error.
+// Bind reads the request body and decodes it into dest based on Content-Type.
+// Automatically writes a 400 Bad Request response if binding fails.
 func (c *Context) Bind(dest any) error {
 	if err := c.ShouldBind(dest); err != nil {
 		c.writeErrorResponse(http.StatusBadRequest, "Invalid request body", err)
@@ -47,7 +47,8 @@ func (c *Context) BindXML(dest any) error {
 	return nil
 }
 
-// ShouldBind attempts to bind based on Content-Type without writing response.
+// ShouldBind attempts to decode the request body into dest based on Content-Type
+// without automatically writing an error response.
 func (c *Context) ShouldBind(dest any) error {
 	contentType := c.Request.Header.Get("Content-Type")
 	if contentType == "" {
@@ -83,6 +84,7 @@ func (c *Context) ShouldBindXML(dest any) error {
 	return c.shouldBindBody(dest, "application/xml", xml.Unmarshal)
 }
 
+// ShouldBindForm binds application/x-www-form-urlencoded form values into a struct.
 func (c *Context) ShouldBindForm(dest any) error {
 	if err := c.Request.ParseForm(); err != nil {
 		return fmt.Errorf("failed to parse form: %w", err)
@@ -173,7 +175,7 @@ func (c *Context) BindForm(dest map[string]string) error {
 	return nil
 }
 
-// BindFormAll parses form data and binds all values to a url.Values map
+// BindFormAll parses URL-encoded form data and returns all values in a url.Values map.
 func (c *Context) BindFormAll() (url.Values, error) {
 	// Check content type
 	contentType := c.Request.Header.Get("Content-Type")

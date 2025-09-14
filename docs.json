@@ -1,0 +1,134 @@
+{
+  "types": [
+    {
+      "name": "ConditionalMiddleware",
+      "doc": "ConditionalMiddleware is an alias to middleware.ConditionalMiddleware,\nwhich pairs a pattern (e.g., \"/api/*\") with a Middleware function.\n"
+    },
+    {
+      "name": "Context",
+      "doc": "Context is an alias to server.Context, which wraps the request and response\nwriter and provides convenience methods (params, body parsing, etc.).\n"
+    },
+    {
+      "name": "Group",
+      "doc": "Group represents a collection of routes that share a common path prefix\nand middleware stack. Useful for organizing related endpoints like `/api/v1/*`.\n",
+      "methods": [
+        {
+          "name": "DELETE",
+          "doc": "DELETE registers a route with the HTTP DELETE method for this group.\nThe handler is invoked when a request matches the given path.\n"
+        },
+        {
+          "name": "GET",
+          "doc": "GET registers a route with the HTTP GET method for this group.\nThe handler is invoked when a request matches the given path.\n"
+        },
+        {
+          "name": "Handle",
+          "doc": "Handle registers a route for the group with a specific HTTP method and path.\nIt automatically prepends the group's prefix to the path and applies\nthe group's middleware stack in reverse order for correct execution.\n"
+        },
+        {
+          "name": "PATCH",
+          "doc": "PATCH registers a route with the HTTP PATCH method for this group.\nThe handler is invoked when a request matches the given path.\n"
+        },
+        {
+          "name": "POST",
+          "doc": "POST registers a route with the HTTP POST method for this group.\nThe handler is invoked when a request matches the given path.\n"
+        },
+        {
+          "name": "PUT",
+          "doc": "PUT registers a route with the HTTP PUT method for this group.\nThe handler is invoked when a request matches the given path.\n"
+        },
+        {
+          "name": "Use",
+          "doc": "Use registers a middleware for this specific group.\nThese middlewares are applied only to routes within the group,\nin addition to any global middleware from the parent server.\n"
+        }
+      ]
+    },
+    {
+      "name": "HandlerFunc",
+      "doc": "HandlerFunc is an alias to server.HandlerFunc, the function signature\nthat route handlers must implement. It takes a *Context and returns a *Response.\n"
+    },
+    {
+      "name": "Middleware",
+      "doc": "Middleware is an alias to middleware.Middleware, representing a function\nthat wraps and modifies a HandlerFunc, similar to how middleware works\nin frameworks like Express or Fiber.\n"
+    },
+    {
+      "name": "Response",
+      "doc": "Response is an alias to server.Response, the unified return type\nfrom every handler function. Encoded as JSON and written to the client.\n"
+    },
+    {
+      "name": "Server",
+      "doc": "Server is the main entry point for the Falcon framework.\nIt holds the router, global middlewares, and any conditional middlewares\nthat should be applied based on route patterns.\n",
+      "methods": [
+        {
+          "name": "DELETE",
+          "doc": "DELETE registers a route with the HTTP DELETE method on the server.\nThe handler is invoked when a request matches the given path.\n"
+        },
+        {
+          "name": "GET",
+          "doc": "GET registers a route with the HTTP GET method on the server.\nThe handler is invoked when a request matches the given path.\n"
+        },
+        {
+          "name": "Group",
+          "doc": "Group represents a collection of routes sharing a common prefix\nand middleware stack. Useful for organizing related endpoints.\nExample: v1 := app.Group(\"/api/v1\")\n"
+        },
+        {
+          "name": "Handle",
+          "doc": "Handle registers a route with a specific HTTP method and path.\nGlobal middleware is automatically applied in reverse order (so execution order is correct).\n"
+        },
+        {
+          "name": "PATCH",
+          "doc": "PATCH registers a route with the HTTP PATCH method on the server.\nThe handler is invoked when a request matches the given path.\n"
+        },
+        {
+          "name": "POST",
+          "doc": "POST registers a route with the HTTP POST method on the server.\nThe handler is invoked when a request matches the given path.\n"
+        },
+        {
+          "name": "PUT",
+          "doc": "PUT registers a route with the HTTP PUT method on the server.\nThe handler is invoked when a request matches the given path.\n"
+        },
+        {
+          "name": "ServeHTTP",
+          "doc": "ServeHTTP implements http.Handler, so Falcon Server can be passed\ndirectly to http.ListenAndServe. It finds the route, applies conditional middleware,\nexecutes the handler, and writes the Response as JSON.\n"
+        },
+        {
+          "name": "Start",
+          "doc": "Start runs the HTTP server on the specified address. It logs the startup\nand will terminate the program if ListenAndServe returns an error.\n"
+        },
+        {
+          "name": "StartAutoTLS",
+          "doc": "StartAutoTLS starts the server with automatic TLS certificate management using Let's Encrypt.\nThis method automatically obtains and renews TLS certificates for the specified domain\nusing the ACME protocol. The server will bind to port 443.\n\nParameters:\n  - domain: The domain name for which to obtain certificates (e.g., \"example.com\")\n\nThe method sets up:\n  - Automatic certificate cache in a local \"certs\" directory\n  - Automatic acceptance of Let's Encrypt Terms of Service\n  - Host whitelist policy for the specified domain\n  - TLS configuration with automatic certificate retrieval\n\nRequirements:\n  - The server must be accessible from the internet on port 443\n  - The domain must point to the server's IP address\n  - Port 80 should also be available for ACME challenges (handled automatically by autocert)\n\nThis method will call log.Fatal if the server fails to start, terminating\nthe program. Use this for production deployments where server startup\nfailure should halt the application.\n\nExample:\n\n\tserver := \u0026Server{}\n\tserver.StartAutoTLS(\"example.com\") // Will serve HTTPS on port 443\n"
+        },
+        {
+          "name": "StartAutoTLSWithStarter",
+          "doc": "StartAutoTLSWithStarter starts the server with automatic TLS certificate management\nusing a custom TLS starter. This method provides the same automatic certificate\nfunctionality as StartAutoTLS but allows dependency injection of the server\nstartup mechanism, making it testable.\n\nParameters:\n  - domain: The domain name for which to obtain certificates (e.g., \"example.com\")\n  - starter: An implementation of TLSStarter interface that handles server startup\n\nThis method is primarily intended for testing purposes where you need to mock\nthe server startup behavior. For production use, prefer StartAutoTLS which\nuses the server's own startup mechanism.\n\nThe method configures:\n  - autocert.Manager with local certificate caching\n  - Automatic TOS acceptance for Let's Encrypt\n  - Host policy restricting certificates to the specified domain\n  - HTTP server bound to port 443 with TLS configuration\n\nExample:\n\n\tserver := \u0026Server{}\n\tmockStarter := \u0026MockTLSStarter{...}\n\tserver.StartAutoTLSWithStarter(\"example.com\", mockStarter)\n"
+        },
+        {
+          "name": "StartTLS",
+          "doc": "StartTLS starts the server with TLS using the provided certificate and key files.\nThe server will bind to the specified address and serve HTTPS traffic.\n\nParameters:\n  - addr: The address to bind to (e.g., \":443\", \"localhost:8443\")\n  - certFile: Path to the TLS certificate file\n  - keyFile: Path to the TLS private key file\n\nThis method will call log.Fatal if the server fails to start, terminating\nthe program. Use this for production deployments where server startup\nfailure should halt the application.\n\nExample:\n\n\tserver := \u0026Server{}\n\tserver.StartTLS(\":443\", \"/path/to/cert.pem\", \"/path/to/key.pem\")\n"
+        },
+        {
+          "name": "Use",
+          "doc": "Use registers a global middleware that will run on every request.\nMiddleware is executed in the order it is added.\nExample:\n\n\tserver.Use(middleware.CORS())\n"
+        },
+        {
+          "name": "UseIf",
+          "doc": "UseIf registers a conditional middleware that only runs if the request path\nmatches the given pattern. Patterns can include a wildcard '*' at the end.\nExample: UseIf(\"/api/v1/*\", AuthMiddleware())\n"
+        }
+      ]
+    },
+    {
+      "name": "TLSStarter",
+      "doc": "TLSStarter defines an interface for starting a TLS server.\nImplementations should provide the startTLSServer method to handle\nthe server startup logic for HTTPS.\n"
+    },
+    {
+      "name": "TemplateRenderer",
+      "doc": "TemplateRenderer is an alias for server.TemplateRenderer.\nIt is responsible for rendering HTML templates within Falcon.\n"
+    }
+  ],
+  "functions": [
+    {
+      "name": "NewTemplateRenderer",
+      "doc": "NewTemplateRenderer Encapsulates server.NewTemplateRenderer\n"
+    }
+  ]
+}

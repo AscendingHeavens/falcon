@@ -62,7 +62,8 @@ func (r *Router) FindHandler(method, path string) (HandlerFunc, map[string]strin
 	return nil, nil
 }
 
-// Set stores a value in the Context
+// Set stores a value in the Context under the specified key.
+// Example: c.Set("user", claims)
 func (c *Context) Set(key string, value any) {
 	if c.Values == nil {
 		c.Values = make(map[string]any)
@@ -70,7 +71,9 @@ func (c *Context) Set(key string, value any) {
 	c.Values[key] = value
 }
 
-// Get retrieves a value from the Context
+// Get retrieves a value from the Context by key.
+// Returns nil if the key does not exist.
+// Example: user := c.Get("user")
 func (c *Context) Get(key string) any {
 	if c.Values == nil {
 		return nil

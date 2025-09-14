@@ -63,9 +63,13 @@ type ConditionalMiddleware = middleware.ConditionalMiddleware
 // that route handlers must implement. It takes a *Context and returns a *Response.
 type HandlerFunc = server.HandlerFunc
 
-// First, define an interface for the server starter
+// TLSStarter defines an interface for starting a TLS server.
+// Implementations should provide the startTLSServer method to handle
+// the server startup logic for HTTPS.
 type TLSStarter interface {
 	startTLSServer(*http.Server)
 }
 
+// TemplateRenderer is an alias for server.TemplateRenderer.
+// It is responsible for rendering HTML templates within Falcon.
 type TemplateRenderer = server.TemplateRenderer

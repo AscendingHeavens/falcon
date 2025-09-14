@@ -40,7 +40,6 @@ type Response struct {
 //   - Writer: the http.ResponseWriter to write responses.
 //   - Request: the incoming HTTP request.
 //   - Params: a map of path parameters extracted from the route (e.g., ":id").
-
 type Context struct {
 	Writer    http.ResponseWriter
 	Request   *http.Request

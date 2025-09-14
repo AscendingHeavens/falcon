@@ -12,7 +12,7 @@ import (
 func newCSRFTContext(method string, token string) *server.Context {
 	req := httptest.NewRequest(method, "/", nil)
 	if token != "" {
-		req.Header.Set(DefaultCSRFConfig.TokenHeader, token)
+		req.Header.Set(defaultCSRFConfig.TokenHeader, token)
 	}
 	w := httptest.NewRecorder()
 	return &server.Context{
@@ -54,7 +54,7 @@ func TestCSRF_SetsTokenCookie_WhenMissing(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.Code)
 
 	// Verify token is set in context
-	token := c.Params[DefaultCSRFConfig.ContextKey]
+	token := c.Params[defaultCSRFConfig.ContextKey]
 	assert.NotEmpty(t, token, "CSRF token should be generated and stored in context")
 
 	// Verify cookie is set
@@ -63,7 +63,7 @@ func TestCSRF_SetsTokenCookie_WhenMissing(t *testing.T) {
 	assert.NotEmpty(t, cookies, "CSRF cookie must be set")
 	found := false
 	for _, ck := range cookies {
-		if ck.Name == DefaultCSRFConfig.TokenCookie {
+		if ck.Name == defaultCSRFConfig.TokenCookie {
 			found = true
 			assert.Equal(t, token, ck.Value)
 			assert.True(t, ck.HttpOnly)

@@ -9,6 +9,15 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// JWTMiddleware returns a middleware that validates JWT tokens in the Authorization header.
+// The token must use the "Bearer " scheme, e.g. "Authorization: Bearer <token>".
+// It verifies the token using the provided HMAC secret.
+// If the token is invalid, missing, or has the wrong signing method, it returns a 401 Unauthorized response.
+// On success, the token claims are stored in the Context under the key "user" for access in handlers.
+//
+// Example usage:
+//
+//	app.Use(JWTMiddleware("supersecretkey"))
 func JWTMiddleware(secret string) Middleware {
 	return func(next server.HandlerFunc) server.HandlerFunc {
 		return func(c *server.Context) *server.Response {

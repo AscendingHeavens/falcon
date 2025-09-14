@@ -6,6 +6,8 @@ import (
 	"sync"
 )
 
+// TemplateRenderer manages HTML templates for rendering in Falcon.
+// It supports thread-safe access and optional development mode for live reloading.
 type TemplateRenderer struct {
 	templates *template.Template
 	funcs     template.FuncMap
@@ -14,8 +16,10 @@ type TemplateRenderer struct {
 	devMode   bool
 }
 
-// NewTemplateRenderer initializes a renderer that parses templates from the given glob pattern.
-// Example: NewTemplateRenderer("views/*.html", true) for dev mode.
+// NewTemplateRenderer initializes a TemplateRenderer that parses templates
+// from the given glob pattern. The devMode flag enables live reloading of
+// templates on each render (useful during development).
+// Example: NewTemplateRenderer("views/*.html", true, funcs)
 func NewTemplateRenderer(pattern string, devMode bool, funcs template.FuncMap) *TemplateRenderer {
 	tr := &TemplateRenderer{
 		funcs:   funcs,
@@ -26,7 +30,9 @@ func NewTemplateRenderer(pattern string, devMode bool, funcs template.FuncMap) *
 	return tr
 }
 
-// mustLoad loads and parses all templates, panicking if any error occurs (fail fast).
+// mustLoad parses all templates according to the pattern.
+// It panics if parsing fails, enforcing fail-fast behavior.
+// Called internally by NewTemplateRenderer and in dev mode.
 func (tr *TemplateRenderer) mustLoad() {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
@@ -38,10 +44,11 @@ func (tr *TemplateRenderer) mustLoad() {
 	tr.templates = parsed
 }
 
-// Render renders a template with the provided name and data into the response writer.
+// Render executes the template with the given name and data, writing
+// the output to the provided http.ResponseWriter.
+// In dev mode, templates are reloaded on each render.
 func (tr *TemplateRenderer) Render(w http.ResponseWriter, name string, data interface{}) error {
 	if tr.devMode {
-		// Reload templates every time in dev mode
 		tr.mustLoad()
 	}
 
@@ -51,7 +58,17 @@ func (tr *TemplateRenderer) Render(w http.ResponseWriter, name string, data inte
 	return tr.templates.ExecuteTemplate(w, name, data)
 }
 
-// Render helper on Context so users can do c.Render("index.html", data)
+// Render is a helper on Context to render templates using a TemplateRenderer.
+// It sets the response code, handles errors, and ensures the response
+// is only written once per request.
+//
+// Parameters:
+//   - renderer: the TemplateRenderer to use for rendering
+//   - code: HTTP status code for the response
+//   - name: template name to render
+//   - data: data to pass into the template
+//
+// Returns a *Response indicating success or failure.
 func (c *Context) Render(renderer *TemplateRenderer, code int, name string, data interface{}) *Response {
 	if c.Handled {
 		return &Response{Success: false, Message: "Response already handled", Code: code}

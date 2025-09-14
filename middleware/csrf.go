@@ -7,7 +7,7 @@ import (
 	"github.com/ascendingheavens/falcon/server"
 )
 
-var DefaultCSRFConfig = CSRFConfig{
+var defaultCSRFConfig = CSRFConfig{
 	TokenHeader:    "X-CSRF-Token",
 	TokenCookie:    "csrf_token",
 	ContextKey:     "csrf_token",
@@ -18,12 +18,24 @@ var DefaultCSRFConfig = CSRFConfig{
 	CookieHTTPOnly: true,
 }
 
-// CSRF returns middleware with default config
+// CSRF returns a middleware using the default CSRF configuration.
+// It automatically validates incoming requests for unsafe methods
+// and sets a CSRF token in the context and cookie.
 func CSRF() Middleware {
-	return CSRFWithConfig(DefaultCSRFConfig)
+	return CSRFWithConfig(defaultCSRFConfig)
 }
 
-// CSRFWithConfig returns middleware with custom config
+// CSRFWithConfig returns a CSRF middleware with a custom configuration.
+//
+// Parameters:
+//   - cfg: CSRFConfig struct to override defaults (header, cookie, secret, expiry, etc.)
+//
+// Behavior:
+//   - Skips validation for HTTP methods listed in cfg.SkipMethods.
+//   - Reads token from request header or cookie.
+//   - Validates the token against the server-side secret.
+//   - Returns 403 Forbidden if validation fails (or calls cfg.ErrorHandler if defined).
+//   - Ensures a valid token is set in context and cookie for the client.
 func CSRFWithConfig(cfg CSRFConfig) Middleware {
 	return func(next server.HandlerFunc) server.HandlerFunc {
 		return func(c *server.Context) *server.Response {

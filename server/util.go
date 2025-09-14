@@ -12,6 +12,8 @@ import (
 	"strings"
 )
 
+// writeResponse writes a response with the given status code, content type, and body.
+// It ensures that a response is only written once per request.
 func (c *Context) writeResponse(code int, contentType string, body []byte) {
 	if c.Handled {
 		return
@@ -22,7 +24,11 @@ func (c *Context) writeResponse(code int, contentType string, body []byte) {
 	c.Handled = true
 }
 
-// writeErrorResponse writes standardized error response.
+// writeErrorResponse writes a standardized JSON error response.
+// Parameters:
+//   - code: HTTP status code to return
+//   - message: human-readable message
+//   - err: underlying error detail
 func (c *Context) writeErrorResponse(code int, message string, err error) {
 	if c.Handled {
 		return
@@ -34,7 +40,16 @@ func (c *Context) writeErrorResponse(code int, message string, err error) {
 		code)
 }
 
-// shouldBindBody is the core implementation for body binding with size limits.
+// shouldBindBody reads and unmarshals the request body into dest.
+// It validates Content-Type against expectedType if provided and
+// enforces a maximum body size.
+//
+// Parameters:
+//   - dest: pointer to the destination structure
+//   - expectedType: expected MIME type, e.g., "application/json"
+//   - unmarshal: function to unmarshal the body, e.g., json.Unmarshal
+//
+// Returns an error if body is empty, Content-Type is invalid, or unmarshaling fails.
 func (c *Context) shouldBindBody(dest any, expectedType string, unmarshal func([]byte, any) error) error {
 	// Validate Content-Type if specified
 	if expectedType != "" {
@@ -63,7 +78,15 @@ func (c *Context) shouldBindBody(dest any, expectedType string, unmarshal func([
 	return unmarshal(body, dest)
 }
 
-// bindFormToStruct uses reflection to bind form values to struct fields.
+// bindFormToStruct binds URL-encoded form values into a struct using reflection.
+// It uses the `form` tag on struct fields if present; otherwise, it defaults
+// to the lowercase field name. Fields tagged with `-` are ignored.
+//
+// Parameters:
+//   - values: form values (from url.Values)
+//   - dest: pointer to a struct to populate
+//
+// Returns an error if dest is not a pointer to struct or if any field fails to set.
 func (c *Context) bindFormToStruct(values url.Values, dest any) error {
 	rv := reflect.ValueOf(dest)
 	if rv.Kind() != reflect.Ptr || rv.Elem().Kind() != reflect.Struct {
@@ -103,7 +126,14 @@ func (c *Context) bindFormToStruct(values url.Values, dest any) error {
 	return nil
 }
 
-// setFieldValue sets a reflect.Value based on its type.
+// setFieldValue sets a reflect.Value field from a string, based on its kind.
+// Supported types: string, int variants, bool, float variants.
+//
+// Parameters:
+//   - field: reflect.Value representing the struct field
+//   - value: string to parse and assign to the field
+//
+// Returns an error if the type is unsupported or parsing fails.
 func (c *Context) setFieldValue(field reflect.Value, value string) error {
 	switch field.Kind() {
 	case reflect.String:
