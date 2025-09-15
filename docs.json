@@ -56,6 +56,12 @@
       "code": "type Group struct {\n\t// Prefix is the base path for this group (e.g., \"/api/v1\").\n\tPrefix\tstring\n\n\t// Server is a reference back to the parent server, allowing\n\t// groups to register routes directly into the main router.\n\tServer\t*Server\n\n\t// Middlewares is a list of middleware that will be applied to\n\t// every route registered within this group, in addition to any\n\t// global or conditional middleware from the Server.\n\tMiddlewares\t[]middleware.Middleware\n}"
     },
     {
+      "name": "Handler",
+      "doc": "Handler is a common interface implemented by both Server and Group.\nIt provides methods for registering middleware and defining routes\nusing standard HTTP methods. This allows groups and servers to be\nused interchangeably when registering routes.\n",
+      "package": "falcon",
+      "code": "type Handler interface {\n\t// Use registers a middleware that will be applied to all routes\n\t// registered through this Handler. Middleware functions are executed\n\t// in the order they are added, with the last registered executed first.\n\t//\n\t// Example:\n\t//   h.Use(LoggerMiddleware)\n\t//   h.Use(AuthMiddleware)\n\t//\n\t// This applies LoggerMiddleware first, then AuthMiddleware for every route.\n\tUse(mw middleware.Middleware)\n\n\t// Handle registers a route with the specified HTTP method and path.\n\t// The provided handler will be wrapped with all registered middleware\n\t// from both the server and group level (if applicable).\n\t//\n\t// Example:\n\t//   h.Handle(http.MethodGet, \"/users\", getUsersHandler)\n\t//\n\t// This is the lowest-level route registration function and is used\n\t// internally by convenience methods like GET, POST, etc.\n\tHandle(method, path string, handler HandlerFunc)\n\n\t// GET registers a route that matches HTTP GET requests at the given path.\n\t// The handler is called when an incoming request's method is GET and\n\t// its path matches.\n\t//\n\t// Example:\n\t//   h.GET(\"/users\", getUsersHandler)\n\tGET(path string, handler HandlerFunc)\n\n\t// POST registers a route that matches HTTP POST requests at the given path.\n\t// The handler is called when an incoming request's method is POST and\n\t// its path matches.\n\t//\n\t// Example:\n\t//   h.POST(\"/users\", createUserHandler)\n\tPOST(path string, handler HandlerFunc)\n\n\t// PUT registers a route that matches HTTP PUT requests at the given path.\n\t// Typically used for replacing existing resources.\n\t//\n\t// Example:\n\t//   h.PUT(\"/users/:id\", updateUserHandler)\n\tPUT(path string, handler HandlerFunc)\n\n\t// PATCH registers a route that matches HTTP PATCH requests at the given path.\n\t// Typically used for partially updating existing resources.\n\t//\n\t// Example:\n\t//   h.PATCH(\"/users/:id\", partiallyUpdateUserHandler)\n\tPATCH(path string, handler HandlerFunc)\n\n\t// DELETE registers a route that matches HTTP DELETE requests at the given path.\n\t// Typically used for deleting resources.\n\t//\n\t// Example:\n\t//   h.DELETE(\"/users/:id\", deleteUserHandler)\n\tDELETE(path string, handler HandlerFunc)\n}"
+    },
+    {
       "name": "HandlerFunc",
       "doc": "HandlerFunc is an alias to server.HandlerFunc, the function signature\nthat route handlers must implement. It takes a *Context and returns a *Response.\n",
       "package": "falcon",
@@ -285,7 +291,7 @@
         {
           "name": "Render",
           "doc": "Render is a helper on Context to render templates using a TemplateRenderer.\nIt sets the response code, handles errors, and ensures the response\nis only written once per request.\n\nParameters:\n  - renderer: the TemplateRenderer to use for rendering\n  - code: HTTP status code for the response\n  - name: template name to render\n  - data: data to pass into the template\n\nReturns a *Response indicating success or failure.\n",
-          "code": "func (c *Context) Render(renderer *TemplateRenderer, code int, name string, data interface{}) *Response"
+          "code": "func (c *Context) Render(renderer *TemplateRenderer, code int, name string, data any) *Response"
         },
         {
           "name": "Set",

@@ -69,17 +69,20 @@ func (tr *TemplateRenderer) Render(w http.ResponseWriter, name string, data inte
 //   - data: data to pass into the template
 //
 // Returns a *Response indicating success or failure.
-func (c *Context) Render(renderer *TemplateRenderer, code int, name string, data interface{}) *Response {
+func (c *Context) Render(renderer *TemplateRenderer, code int, name string, data any) *Response {
 	if c.Handled {
 		return &Response{Success: false, Message: "Response already handled", Code: code}
 	}
 
 	c.Writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-	c.Writer.WriteHeader(code)
+
+	// only write status here if it's not 200
+	if code != http.StatusOK {
+		c.Writer.WriteHeader(code)
+	}
 
 	err := renderer.Render(c.Writer, name, data)
 	if err != nil {
-		// Fall back to error
 		http.Error(c.Writer, "Template error: "+err.Error(), http.StatusInternalServerError)
 		return &Response{Success: false, Message: "Template render error", Code: 500}
 	}

@@ -73,3 +73,68 @@ type TLSStarter interface {
 // TemplateRenderer is an alias for server.TemplateRenderer.
 // It is responsible for rendering HTML templates within Falcon.
 type TemplateRenderer = server.TemplateRenderer
+
+// Handler is a common interface implemented by both Server and Group.
+// It provides methods for registering middleware and defining routes
+// using standard HTTP methods. This allows groups and servers to be
+// used interchangeably when registering routes.
+type Handler interface {
+	// Use registers a middleware that will be applied to all routes
+	// registered through this Handler. Middleware functions are executed
+	// in the order they are added, with the last registered executed first.
+	//
+	// Example:
+	//   h.Use(LoggerMiddleware)
+	//   h.Use(AuthMiddleware)
+	//
+	// This applies LoggerMiddleware first, then AuthMiddleware for every route.
+	Use(mw middleware.Middleware)
+
+	// Handle registers a route with the specified HTTP method and path.
+	// The provided handler will be wrapped with all registered middleware
+	// from both the server and group level (if applicable).
+	//
+	// Example:
+	//   h.Handle(http.MethodGet, "/users", getUsersHandler)
+	//
+	// This is the lowest-level route registration function and is used
+	// internally by convenience methods like GET, POST, etc.
+	Handle(method, path string, handler HandlerFunc)
+
+	// GET registers a route that matches HTTP GET requests at the given path.
+	// The handler is called when an incoming request's method is GET and
+	// its path matches.
+	//
+	// Example:
+	//   h.GET("/users", getUsersHandler)
+	GET(path string, handler HandlerFunc)
+
+	// POST registers a route that matches HTTP POST requests at the given path.
+	// The handler is called when an incoming request's method is POST and
+	// its path matches.
+	//
+	// Example:
+	//   h.POST("/users", createUserHandler)
+	POST(path string, handler HandlerFunc)
+
+	// PUT registers a route that matches HTTP PUT requests at the given path.
+	// Typically used for replacing existing resources.
+	//
+	// Example:
+	//   h.PUT("/users/:id", updateUserHandler)
+	PUT(path string, handler HandlerFunc)
+
+	// PATCH registers a route that matches HTTP PATCH requests at the given path.
+	// Typically used for partially updating existing resources.
+	//
+	// Example:
+	//   h.PATCH("/users/:id", partiallyUpdateUserHandler)
+	PATCH(path string, handler HandlerFunc)
+
+	// DELETE registers a route that matches HTTP DELETE requests at the given path.
+	// Typically used for deleting resources.
+	//
+	// Example:
+	//   h.DELETE("/users/:id", deleteUserHandler)
+	DELETE(path string, handler HandlerFunc)
+}
