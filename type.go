@@ -72,7 +72,7 @@ type TLSStarter interface {
 
 // TemplateRenderer is an alias for server.TemplateRenderer.
 // It is responsible for rendering HTML templates within Falcon.
-type TemplateRenderer = server.TemplateRenderer
+// type TemplateRenderer = server.TemplateRenderer TO BE ADDED
 
 // Handler is a common interface implemented by both Server and Group.
 // It provides methods for registering middleware and defining routes

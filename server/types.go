@@ -41,11 +41,11 @@ type Response struct {
 //   - Request: the incoming HTTP request.
 //   - Params: a map of path parameters extracted from the route (e.g., ":id").
 type Context struct {
-	Writer    http.ResponseWriter
-	Request   *http.Request
-	Params    map[string]string
-	Handled   bool
-	Templates *TemplateRenderer
+	Writer  http.ResponseWriter
+	Request *http.Request
+	Params  map[string]string
+	Handled bool
+	// Templates *TemplateRenderer To be added
 	Validator *validator.Validate
 	Values    map[string]any
 }
