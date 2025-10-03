@@ -22,9 +22,10 @@ type ConditionalMiddleware struct {
 // CORSConfig defines configuration for Cross-Origin Resource Sharing (CORS).
 // Allows specifying which origins, headers, and methods are permitted.
 type CORSConfig struct {
-	AllowOrigins []string // Allowed origins, e.g., ["https://example.com"] or ["*"]
-	AllowMethods []string // Allowed HTTP methods, e.g., ["GET", "POST"]
-	AllowHeaders []string // Allowed headers, e.g., ["Content-Type", "Authorization"]
+	AllowOrigins     []string // Allowed origins, e.g., ["https://example.com"] or ["*"]
+	AllowMethods     []string // Allowed HTTP methods, e.g., ["GET", "POST"]
+	AllowHeaders     []string // Allowed headers, e.g., ["Content-Type", "Authorization"]
+	AllowCredentials bool
 }
 
 // CSRFConfig defines configuration for CSRF protection middleware.
