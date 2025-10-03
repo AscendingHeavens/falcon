@@ -26,7 +26,6 @@ var defaultCORSConfig = CORSConfig{
 		"Origin",
 		"X-Requested-With",
 	},
-	AllowCredentials: true,
 }
 
 // CORS returns a default CORS middleware using defaultCORSConfig.
@@ -60,46 +59,29 @@ func CORSWithConfig(cfg CORSConfig) Middleware {
 		return func(c *server.Context) *server.Response {
 			origin := c.Request.Header.Get("Origin")
 
-			allowOrigin := ""
+			// Set Access-Control-Allow-Origin if matched
 			if origin != "" {
 				for _, o := range cfg.AllowOrigins {
-					if o == "*" {
-						if cfg.AllowCredentials {
-							// Echo the origin if credentials are allowed
-							allowOrigin = origin
-						} else {
-							allowOrigin = "*"
-						}
-						break
-					} else if strings.EqualFold(o, origin) {
-						allowOrigin = origin
+					if o == "*" || strings.EqualFold(o, origin) {
+						c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 						break
 					}
 				}
 			}
 
-			// Handle preflight OPTIONS first (before setting other headers)
+			// Set other CORS headers
+			c.Writer.Header().Set("Access-Control-Allow-Methods", strings.Join(cfg.AllowMethods, ", "))
+			c.Writer.Header().Set("Access-Control-Allow-Headers", strings.Join(cfg.AllowHeaders, ", "))
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+
+			// Handle preflight OPTIONS request
 			if c.Request.Method == http.MethodOptions {
-				if allowOrigin != "" {
-					c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
-					c.Writer.Header().Set("Access-Control-Allow-Methods", strings.Join(cfg.AllowMethods, ", "))
-					c.Writer.Header().Set("Access-Control-Allow-Headers", strings.Join(cfg.AllowHeaders, ", "))
-					if cfg.AllowCredentials {
-						c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-					}
-				}
 				c.Writer.WriteHeader(http.StatusNoContent)
-				return nil // Prevent further processing
+				c.Handled = true
+				return &server.Response{Success: true, Message: "CORS preflight", Code: http.StatusNoContent}
 			}
 
-			// For actual requests (non-OPTIONS), set CORS headers
-			if allowOrigin != "" {
-				c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
-				if cfg.AllowCredentials {
-					c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-				}
-			}
-
+			// Continue normal middleware/handler flow
 			return next(c)
 		}
 	}
