@@ -78,32 +78,29 @@ func CORSWithConfig(cfg CORSConfig) Middleware {
 				}
 			}
 
-			if allowOrigin != "" {
-				c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+			// Handle preflight OPTIONS first (before setting other headers)
+			if c.Request.Method == http.MethodOptions {
+				if allowOrigin != "" {
+					c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+					c.Writer.Header().Set("Access-Control-Allow-Methods", strings.Join(cfg.AllowMethods, ", "))
+					c.Writer.Header().Set("Access-Control-Allow-Headers", strings.Join(cfg.AllowHeaders, ", "))
+					if cfg.AllowCredentials {
+						c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+					}
+				}
+				c.Writer.WriteHeader(http.StatusNoContent)
+				return nil // Prevent further processing
 			}
 
-			// Set other headers
-			c.Writer.Header().Set("Access-Control-Allow-Methods", strings.Join(cfg.AllowMethods, ", "))
-			c.Writer.Header().Set("Access-Control-Allow-Headers", strings.Join(cfg.AllowHeaders, ", "))
-			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-
-			// Handle preflight OPTIONS
-			if c.Request.Method == http.MethodOptions {
-				// Set headers (must match actual request allowances)
+			// For actual requests (non-OPTIONS), set CORS headers
+			if allowOrigin != "" {
 				c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
-				c.Writer.Header().Set("Access-Control-Allow-Methods", strings.Join(cfg.AllowMethods, ", "))
-				c.Writer.Header().Set("Access-Control-Allow-Headers", strings.Join(cfg.AllowHeaders, ", "))
 				if cfg.AllowCredentials {
 					c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 				}
-
-				// Short-circuit here
-				c.Writer.WriteHeader(http.StatusNoContent)
-				return &server.Response{Success: true, Message: "CORS preflight", Code: http.StatusNoContent}
 			}
 
 			return next(c)
 		}
 	}
-
 }
