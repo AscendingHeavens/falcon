@@ -17,6 +17,7 @@ var defaultCORSConfig = CORSConfig{
 		http.MethodPatch,
 		http.MethodPost,
 		http.MethodDelete,
+		http.MethodOptions,
 	},
 	AllowHeaders: []string{
 		"Content-Type",
