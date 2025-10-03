@@ -89,7 +89,6 @@ func CORSWithConfig(cfg CORSConfig) Middleware {
 			// Handle preflight OPTIONS
 			if c.Request.Method == http.MethodOptions {
 				c.Writer.WriteHeader(http.StatusNoContent)
-				c.Handled = true
 				return &server.Response{Success: true, Message: "CORS preflight", Code: http.StatusNoContent}
 			}
 
