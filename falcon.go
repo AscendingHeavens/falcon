@@ -80,11 +80,37 @@ func (s *Server) DELETE(path string, handler server.HandlerFunc) {
 	s.Handle(http.MethodDelete, path, handler)
 }
 
-// ServeHTTP implements http.Handler, so Falcon Server can be passed
-// directly to http.ListenAndServe. It finds the route, applies conditional middleware,
-// executes the handler, and writes the Response as JSON.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c := &server.Context{Writer: w, Request: r}
+
+	// Handle OPTIONS preflight before route matching
+	if r.Method == http.MethodOptions {
+		// Create a dummy handler for OPTIONS
+		handler := func(c *server.Context) *server.Response {
+			return &server.Response{Success: true, Message: "OK", Code: http.StatusNoContent}
+		}
+
+		// Apply global middleware (in reverse order, like in Handle())
+		combined := handler
+		for i := len(s.middlewares) - 1; i >= 0; i-- {
+			combined = s.middlewares[i](combined)
+		}
+
+		// Apply conditional middleware
+		final := combined
+		for _, cm := range s.conditionalMiddleware {
+			if strings.HasPrefix(r.URL.Path, strings.TrimSuffix(cm.Pattern, "*")) {
+				final = cm.Middleware(final)
+			}
+		}
+
+		// Execute the handler chain
+		resp := final(c)
+		if !c.Handled && resp != nil {
+			w.WriteHeader(resp.Code)
+		}
+		return
+	}
 
 	// Find the matching handler and path parameters
 	handler, params := s.router.FindHandler(r.Method, r.URL.Path)
@@ -113,7 +139,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			log.Printf("failed to encode JSON response: %v", err)
 		}
 	}
-
 }
 
 // Start runs the HTTP server on the specified address. It logs the startup
