@@ -34,19 +34,17 @@ func Logger() Middleware {
 // Recovery returns a middleware that recovers from panics and writes a 500 response.
 func Recovery() Middleware {
 	return func(next server.HandlerFunc) server.HandlerFunc {
-		return func(c *server.Context) *server.Response {
+		return func(c *server.Context) (resp *server.Response) {
 			defer func() {
 				if r := recover(); r != nil {
-					// Log stack trace
 					log.Printf("Recovered panic: %v\n%s", r, string(debug.Stack()))
 
-					// Only write response if handler hasn't already written
 					if !c.Handled {
 						accept := c.Request.Header.Get("Accept")
 						if strings.Contains(accept, "text/html") {
-							c.HTML(http.StatusInternalServerError, "<h1>500 Internal Server Error</h1>")
+							resp = c.HTML(http.StatusInternalServerError, "<h1>500 Internal Server Error</h1>")
 						} else {
-							c.JSON(
+							resp = c.JSON(
 								false,
 								"Internal Server Error",
 								fmt.Sprintf("%v", r),
