@@ -15,7 +15,6 @@ func newTestContext(method string) *server.Context {
 	return &server.Context{
 		Request: req,
 		Writer:  w,
-		Params:  make(map[string]string),
 	}
 }
 

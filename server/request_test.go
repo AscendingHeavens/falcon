@@ -21,7 +21,6 @@ func newTestContextWithBody(method, contentType, body string) *Context {
 	return &Context{
 		Request: req,
 		Writer:  w,
-		Params:  make(map[string]string),
 	}
 }
 
@@ -330,7 +329,7 @@ func TestShouldBindMultipart_ParseError(t *testing.T) {
 }
 
 func TestParam_ReturnsValueOrEmpty(t *testing.T) {
-	c := &Context{Params: map[string]string{"id": "123"}}
+	c := &Context{Params: Params{{Key: "id", Value: "123"}}}
 	assert.Equal(t, "123", c.Param("id"))
 	assert.Equal(t, "", c.Param("missing"))
 

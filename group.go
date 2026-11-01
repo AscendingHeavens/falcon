@@ -21,28 +21,17 @@ func (s *Server) Group(prefix string) *Group {
 // These middlewares are applied only to routes within the group,
 // in addition to any global middleware from the parent server.
 func (g *Group) Use(mw middleware.Middleware) {
+	g.Server.mustNotBeBuilt("Group.Use")
 	g.Middlewares = append(g.Middlewares, mw)
 }
 
 // Handle registers a route for the group with a specific HTTP method and path.
-// It automatically prepends the group's prefix to the path and applies
-// the group's middleware stack in reverse order for correct execution.
+// It automatically prepends the group's prefix to the path. The group's middleware
+// applies to the route no matter whether it was added before or after.
 func (g *Group) Handle(method, path string, handler HandlerFunc) {
-	fullPath := g.Prefix + path
-
-	combined := handler
-
-	// Apply server-level middlewares first
-	for i := len(g.Server.middlewares) - 1; i >= 0; i-- {
-		combined = g.Server.middlewares[i](combined)
-	}
-
-	// Then group-specific middlewares
-	for i := len(g.Middlewares) - 1; i >= 0; i-- {
-		combined = g.Middlewares[i](combined)
-	}
-
-	g.Server.router.Handle(method, fullPath, combined)
+	g.Server.mustNotBeBuilt("Group.Handle")
+	rt := g.Server.router.Handle(method, g.Prefix+path, handler)
+	g.Server.routeGroups[rt] = g
 }
 
 // GET registers a route with the HTTP GET method for this group.

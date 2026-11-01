@@ -2,6 +2,8 @@ package falcon
 
 import (
 	"net/http"
+	"sync"
+	"sync/atomic"
 
 	"github.com/ascendingheavens/falcon/middleware"
 	"github.com/ascendingheavens/falcon/server"
@@ -24,6 +26,26 @@ type Server struct {
 	// For example, you might apply authentication middleware only for
 	// `/api/*` routes.
 	conditionalMiddleware []middleware.ConditionalMiddleware
+
+	// routeGroups records which group registered a route, so the group's
+	// middleware can be applied when the chains are built.
+	routeGroups map[*server.Route]*Group
+
+	// pool recycles Contexts between requests.
+	pool sync.Pool
+
+	// ensureBuilt builds the middleware chains the first time it's called.
+	ensureBuilt func()
+
+	// built reports whether the chains exist, after which registering panics.
+	built atomic.Bool
+
+	// The responses the server gives on its own, wrapped in the global
+	// middleware so that Logger, Recovery and CORS also see them.
+	notFound         server.HandlerFunc
+	methodNotAllowed server.HandlerFunc
+	autoOptions      server.HandlerFunc
+	slashRedirect    server.HandlerFunc
 }
 
 // Group represents a collection of routes that share a common path prefix

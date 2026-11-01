@@ -106,10 +106,7 @@ func (c *Context) ShouldBindMultipart(dest any) error {
 // Param returns the value of a path parameter by name.
 // Example: /users/:id -> c.Param("id") returns "123"
 func (c *Context) Param(name string) string {
-	if c.Params == nil {
-		return ""
-	}
-	return c.Params[name]
+	return c.Params.Get(name)
 }
 
 // Query returns the first value of a URL query parameter by key.

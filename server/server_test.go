@@ -22,28 +22,28 @@ func TestRouter(t *testing.T) {
 		method     string
 		path       string
 		wantFound  bool
-		wantParams map[string]string
+		wantParams Params
 	}{
 		{
 			"static route match",
 			"GET",
 			"/users",
 			true,
-			map[string]string{},
+			nil,
 		},
 		{
 			"parameter route match",
 			"GET",
 			"/users/123",
 			true,
-			map[string]string{"id": "123"},
+			Params{{Key: "id", Value: "123"}},
 		},
 		{
 			"parameter route with post method",
 			"POST",
 			"/users/456/update",
 			true,
-			map[string]string{"id": "456"},
+			Params{{Key: "id", Value: "456"}},
 		},
 		{
 			"wrong method",
@@ -70,13 +70,14 @@ func TestRouter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, params := router.FindHandler(tt.method, tt.path)
+			var params Params
+			h := router.FindHandler(tt.method, tt.path, &params)
 			if tt.wantFound {
 				assert.NotNil(t, h)
 				assert.Equal(t, tt.wantParams, params)
 			} else {
 				assert.Nil(t, h)
-				assert.Nil(t, params)
+				assert.Empty(t, params)
 			}
 		})
 	}
