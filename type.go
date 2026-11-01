@@ -37,8 +37,12 @@ type Server struct {
 	// ensureBuilt builds the middleware chains the first time it's called.
 	ensureBuilt func()
 
-	// built reports whether the chains exist, after which registering panics.
+	// built reports whether building the chains has started, after which registering panics.
 	built atomic.Bool
+
+	// ready reports whether the chains are complete, so that requests after the
+	// first only need this one load instead of calling ensureBuilt.
+	ready atomic.Bool
 
 	// The responses the server gives on its own, wrapped in the global
 	// middleware so that Logger, Recovery and CORS also see them.

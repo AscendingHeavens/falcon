@@ -81,12 +81,6 @@ func (c *Context) closeStream() {
 // is written, so a Details value that can't be encoded still gets a clean 500.
 func (c *Context) writeEnvelope(resp *Response) {
 	w := envelopeWriters.Get().(*envelopeWriter)
-	defer func() {
-		if w.buf.Cap() <= maxPooledBuffer {
-			w.buf.Reset()
-			envelopeWriters.Put(w)
-		}
-	}()
 
 	if err := w.encode(resp); err != nil {
 		resp = c.internalError(fmt.Errorf("encoding the Details of response %q: %w", resp.Message, err))
@@ -98,6 +92,11 @@ func (c *Context) writeEnvelope(resp *Response) {
 	c.Writer.WriteHeader(resp.Code)
 	if bodyAllowed(resp.Code) {
 		_, _ = c.Writer.Write(w.buf.Bytes())
+	}
+
+	if w.buf.Cap() <= maxPooledBuffer {
+		w.buf.Reset()
+		envelopeWriters.Put(w)
 	}
 }
 

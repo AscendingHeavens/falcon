@@ -107,6 +107,8 @@ func (s *Server) buildChains() {
 	s.methodNotAllowed = wrap(s.methodNotAllowedHandler, s.middlewares)
 	s.autoOptions = wrap(s.autoOptionsHandler, s.middlewares)
 	s.slashRedirect = wrap(slashRedirectHandler, s.middlewares)
+
+	s.ready.Store(true)
 }
 
 // guardNil makes a handler that returns nil fail loudly, because an empty 200 would hide
@@ -164,10 +166,13 @@ func (s *Server) DELETE(path string, handler server.HandlerFunc) {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.ensureBuilt()
+	if !s.ready.Load() {
+		s.ensureBuilt()
+	}
 
+	// Everything else was cleared before the Context went back into the pool.
 	c := s.pool.Get().(*server.Context)
-	c.Reset(w, r)
+	c.Writer, c.Request = w, r
 
 	// Find the matching handler and path parameters
 	handler := s.router.FindHandler(r.Method, r.URL.Path, &c.Params)

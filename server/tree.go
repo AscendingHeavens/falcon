@@ -101,58 +101,99 @@ func (n *node) insertStatic(text string) *node {
 	}
 }
 
-// find returns the route matching path and appends its params to params.
-// If a static branch turns out to be a dead end it falls back to the param and then
-// the catch-all branch, undoing any params captured along the way. It doesn't allocate
-// as long as params has enough capacity.
+// find returns the route matching path and appends its params to params. If a static
+// branch turns out to be a dead end it falls back to the param and then the catch-all
+// branch, undoing any params captured along the way. It doesn't allocate as long as
+// params has enough capacity.
+//
+// It only recurses where there's a branch to fall back to, and otherwise walks down in a
+// loop. A walk that fails can leave params behind, so whoever may try something else
+// afterwards must truncate params first, as must the caller if it gets nil.
 func (n *node) find(path string, params *Params) *Route {
-	if len(path) < len(n.prefix) || path[:len(n.prefix)] != n.prefix {
-		return nil
-	}
-	path = path[len(n.prefix):]
-
-	if path == "" {
-		if n.route != nil {
-			return n.route
+	for {
+		// Compared by hand because a function call anywhere in this loop slows down the
+		// whole walk, even when it isn't taken: 8 bytes at a time, then the remainder.
+		prefix := n.prefix
+		if len(path) < len(prefix) {
+			return nil
 		}
-		if n.catchAll != nil {
-			*params = append(*params, Param{Key: n.catchAll.paramName})
-			return n.catchAll.route
-		}
-		return nil
-	}
-
-	// indices is scanned by hand because it's short and this is the hottest loop in the router.
-	for i := 0; i < len(n.indices); i++ {
-		if n.indices[i] == path[0] {
-			if rt := n.children[i].find(path, params); rt != nil {
-				return rt
+		i := 0
+		for ; i+8 <= len(prefix); i += 8 {
+			if load64(path[i:]) != load64(prefix[i:]) {
+				return nil
 			}
-			break
 		}
-	}
+		for ; i < len(prefix); i++ {
+			if path[i] != prefix[i] {
+				return nil
+			}
+		}
+		path = path[len(prefix):]
 
-	if n.param != nil {
-		end := strings.IndexByte(path, '/')
-		if end < 0 {
-			end = len(path)
+		if path == "" {
+			if n.route != nil {
+				return n.route
+			}
+			if n.catchAll != nil {
+				*params = append(*params, Param{Key: n.catchAll.paramName})
+				return n.catchAll.route
+			}
+			return nil
 		}
-		// A param never matches an empty segment.
-		if end > 0 {
+
+		// indices is scanned by hand because it's short and this is the hottest loop in the router.
+		var child *node
+		for i := 0; i < len(n.indices); i++ {
+			if n.indices[i] == path[0] {
+				child = n.children[i]
+				break
+			}
+		}
+
+		if child != nil {
+			if n.param == nil && n.catchAll == nil {
+				n = child
+				continue
+			}
+
 			mark := len(*params)
-			*params = append(*params, Param{Key: n.param.paramName, Value: path[:end]})
-			if rt := n.param.find(path[end:], params); rt != nil {
+			if rt := child.find(path, params); rt != nil {
 				return rt
 			}
 			*params = (*params)[:mark]
 		}
-	}
 
-	if n.catchAll != nil {
-		*params = append(*params, Param{Key: n.catchAll.paramName, Value: path})
-		return n.catchAll.route
+		if n.param != nil {
+			// Scanned by hand because segments are short, which makes IndexByte's call overhead a loss.
+			end := 0
+			for end < len(path) && path[end] != '/' {
+				end++
+			}
+
+			// A param never matches an empty segment.
+			if end > 0 {
+				if n.catchAll == nil {
+					*params = append(*params, Param{Key: n.param.paramName, Value: path[:end]})
+					path = path[end:]
+					n = n.param
+					continue
+				}
+
+				mark := len(*params)
+				*params = append(*params, Param{Key: n.param.paramName, Value: path[:end]})
+				if rt := n.param.find(path[end:], params); rt != nil {
+					return rt
+				}
+				*params = (*params)[:mark]
+			}
+		}
+
+		if n.catchAll != nil {
+			*params = append(*params, Param{Key: n.catchAll.paramName, Value: path})
+			return n.catchAll.route
+		}
+		return nil
 	}
-	return nil
 }
 
 // wildcardIndex returns the index of the first ':' or '*' that starts a segment,
@@ -167,6 +208,28 @@ func wildcardIndex(path string) int {
 		}
 	}
 	return len(path)
+}
+
+// load64 reads the first 8 bytes of s as one number, which the compiler turns into a
+// single load. The byte order doesn't matter, because it's only compared with another.
+func load64(s string) uint64 {
+	_ = s[7]
+	return uint64(s[0]) | uint64(s[1])<<8 | uint64(s[2])<<16 | uint64(s[3])<<24 |
+		uint64(s[4])<<32 | uint64(s[5])<<40 | uint64(s[6])<<48 | uint64(s[7])<<56
+}
+
+// sameString is a == b for strings of a few bytes, such as HTTP methods,
+// where this inlined loop beats the function call == compiles to.
+func sameString(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // commonPrefix returns the length of the prefix shared by a and b.

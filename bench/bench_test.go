@@ -231,6 +231,16 @@ func BenchmarkGitHubAll(b *testing.B) {
 	}
 }
 
+// A long static path, the worst case for comparing strings one byte at a time.
+func BenchmarkLongStatic(b *testing.B) {
+	route := []route{{"GET", "/api/v1/organizations/settings/notifications/email/preferences/weekly-digest-schedule"}}
+	for _, f := range frameworks {
+		b.Run(f.name, func(b *testing.B) {
+			run(b, f.noop(route), requests(route))
+		})
+	}
+}
+
 // A full request: route lookup, param route, and a JSON envelope response.
 func BenchmarkJSON(b *testing.B) {
 	for _, f := range frameworks {

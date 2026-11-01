@@ -49,10 +49,12 @@ func (r *Router) Routes() []*Route {
 // It returns nil if no route matches, leaving params unchanged.
 func (r *Router) FindHandler(method, path string, params *Params) HandlerFunc {
 	for i := range r.trees {
-		if r.trees[i].method == method {
+		if sameString(r.trees[i].method, method) {
+			mark := len(*params)
 			if rt := r.trees[i].root.find(path, params); rt != nil {
 				return rt.Handler
 			}
+			*params = (*params)[:mark]
 			return nil
 		}
 	}
