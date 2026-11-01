@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/ascendingheavens/falcon/middleware"
 	"github.com/ascendingheavens/falcon/server"
@@ -15,25 +16,36 @@ import (
 //
 //	server := falcon.New()
 func New() *Server {
-	return &Server{
+	s := &Server{
 		router:      server.NewRouter(),
 		middlewares: make([]middleware.Middleware, 0),
+		routeGroups: make(map[*server.Route]*Group),
 	}
+	s.pool.New = func() any {
+		return &server.Context{Params: make(server.Params, 0, 8)}
+	}
+	// OnceFunc repeats a panic on every call, so a middleware that panics while
+	// being built fails every request instead of leaving a half-built server.
+	s.ensureBuilt = sync.OnceFunc(s.buildChains)
+	return s
 }
 
-// Use registers a global middleware that will run on every request.
-// Middleware is executed in the order it is added.
+// Use registers a global middleware that will run on every request, including
+// the ones no route matches. Middleware is executed in the order it is added,
+// and applies to every route no matter whether it was registered before or after.
 // Example:
 //
 //	server.Use(middleware.CORS())
 func (s *Server) Use(mw middleware.Middleware) {
+	s.mustNotBeBuilt("Use")
 	s.middlewares = append(s.middlewares, mw)
 }
 
-// UseIf registers a conditional middleware that only runs if the request path
+// UseIf registers a conditional middleware that only runs on routes whose path
 // matches the given pattern. Patterns can include a wildcard '*' at the end.
 // Example: UseIf("/api/v1/*", AuthMiddleware())
 func (s *Server) UseIf(pattern string, mw middleware.Middleware) {
+	s.mustNotBeBuilt("UseIf")
 	s.conditionalMiddleware = append(s.conditionalMiddleware, middleware.ConditionalMiddleware{
 		Pattern:    pattern,
 		Middleware: mw,
@@ -41,13 +53,51 @@ func (s *Server) UseIf(pattern string, mw middleware.Middleware) {
 }
 
 // Handle registers a route with a specific HTTP method and path.
-// Global middleware is automatically applied in reverse order (so execution order is correct).
+// It panics if the route conflicts with one that is already registered.
 func (s *Server) Handle(method, path string, handler server.HandlerFunc) {
-	combined := handler
-	for i := len(s.middlewares) - 1; i >= 0; i-- {
-		combined = s.middlewares[i](combined)
+	s.mustNotBeBuilt("Handle")
+	s.router.Handle(method, path, handler)
+}
+
+// mustNotBeBuilt panics if the server has started serving: the chains are already
+// built, and changing them would race with the requests in flight.
+func (s *Server) mustNotBeBuilt(call string) {
+	if s.built.Load() {
+		panic("falcon: " + call + " called after the server started serving; register everything before the first request")
 	}
-	s.router.Handle(method, path, combined)
+}
+
+// buildChains wraps every route in its middleware. It runs once, on the first request.
+// The order, outermost first, is: global, conditional, group, handler.
+func (s *Server) buildChains() {
+	s.built.Store(true)
+
+	for _, rt := range s.router.Routes() {
+		h := rt.Handler
+		if g := s.routeGroups[rt]; g != nil {
+			h = wrap(h, g.Middlewares)
+		}
+		for i := len(s.conditionalMiddleware) - 1; i >= 0; i-- {
+			cm := s.conditionalMiddleware[i]
+			if strings.HasPrefix(rt.Path, strings.TrimSuffix(cm.Pattern, "*")) {
+				h = cm.Middleware(h)
+			}
+		}
+		rt.Handler = wrap(h, s.middlewares)
+	}
+
+	s.notFound = wrap(notFoundHandler, s.middlewares)
+	s.methodNotAllowed = wrap(s.methodNotAllowedHandler, s.middlewares)
+	s.autoOptions = wrap(s.autoOptionsHandler, s.middlewares)
+	s.slashRedirect = wrap(slashRedirectHandler, s.middlewares)
+}
+
+// wrap applies middlewares to h in reverse, so that the first one added runs first.
+func wrap(h server.HandlerFunc, middlewares []middleware.Middleware) server.HandlerFunc {
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		h = middlewares[i](h)
+	}
+	return h
 }
 
 // GET registers a route with the HTTP GET method on the server.
@@ -81,64 +131,32 @@ func (s *Server) DELETE(path string, handler server.HandlerFunc) {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	c := &server.Context{Writer: w, Request: r}
+	s.ensureBuilt()
 
-	// Handle OPTIONS preflight before route matching
-	if r.Method == http.MethodOptions {
-		// Create a dummy handler for OPTIONS
-		handler := func(c *server.Context) *server.Response {
-			return &server.Response{Success: true, Message: "OK", Code: http.StatusNoContent}
-		}
-
-		// Apply global middleware (in reverse order, like in Handle())
-		combined := handler
-		for i := len(s.middlewares) - 1; i >= 0; i-- {
-			combined = s.middlewares[i](combined)
-		}
-
-		// Apply conditional middleware
-		final := combined
-		for _, cm := range s.conditionalMiddleware {
-			if strings.HasPrefix(r.URL.Path, strings.TrimSuffix(cm.Pattern, "*")) {
-				final = cm.Middleware(final)
-			}
-		}
-
-		// Execute the handler chain
-		resp := final(c)
-		if !c.Handled && resp != nil {
-			w.WriteHeader(resp.Code)
-		}
-		return
-	}
+	c := s.pool.Get().(*server.Context)
+	c.Reset(w, r)
 
 	// Find the matching handler and path parameters
-	handler, params := s.router.FindHandler(r.Method, r.URL.Path)
+	handler := s.router.FindHandler(r.Method, r.URL.Path, &c.Params)
 	if handler == nil {
-		http.NotFound(w, r)
-		return
-	}
-	c.Params = params
-
-	// Apply conditional middleware if the request path matches any pattern
-	final := handler
-	for _, cm := range s.conditionalMiddleware {
-		if strings.HasPrefix(r.URL.Path, strings.TrimSuffix(cm.Pattern, "*")) {
-			final = cm.Middleware(final)
-		}
+		handler = s.fallback(c)
 	}
 
 	// Execute the handler
-	resp := final(c)
+	resp := handler(c)
 
 	// Write JSON response
 	if !c.Handled && resp != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(resp.Code)
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
+		c.Writer.Header().Set("Content-Type", "application/json")
+		c.Writer.WriteHeader(resp.Code)
+		if err := json.NewEncoder(c.Writer).Encode(resp); err != nil {
 			log.Printf("failed to encode JSON response: %v", err)
 		}
 	}
+
+	// A panicking handler never gets here, so its Context isn't reused.
+	c.Reset(nil, nil)
+	s.pool.Put(c)
 }
 
 // Start runs the HTTP server on the specified address. It logs the startup

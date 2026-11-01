@@ -43,7 +43,9 @@ func TestGroup_Handle(t *testing.T) {
 	group.Handle(http.MethodGet, "/test", testHandler)
 
 	// Verify route registered with prefixed path
-	h, params := testServer.router.FindHandler(http.MethodGet, "/api/v1/test")
+	testServer.ensureBuilt()
+	var params server.Params
+	h := testServer.router.FindHandler(http.MethodGet, "/api/v1/test", &params)
 	assert.NotNil(t, h)
 	assert.Empty(t, params)
 

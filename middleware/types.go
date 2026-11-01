@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/ascendingheavens/falcon/server"
@@ -25,18 +26,19 @@ type CORSConfig struct {
 	AllowOrigins     []string // Allowed origins, e.g., ["https://example.com"] or ["*"]
 	AllowMethods     []string // Allowed HTTP methods, e.g., ["GET", "POST"]
 	AllowHeaders     []string // Allowed headers, e.g., ["Content-Type", "Authorization"]
-	AllowCredentials bool
+	AllowCredentials bool     // Allow cookies and Authorization across origins. Can't be combined with "*"
 }
 
 // CSRFConfig defines configuration for CSRF protection middleware.
 type CSRFConfig struct {
-	TokenHeader    string                                        // Header to read/write CSRF token
-	TokenCookie    string                                        // Cookie name to store the token
-	ContextKey     string                                        // Context key for storing the token
-	Expiry         time.Duration                                 // Token expiration duration
-	Secret         []byte                                        // HMAC secret used for token validation
+	TokenHeader    string                                        // Header the client must send the token in
+	TokenCookie    string                                        // Cookie name holding the value the token is derived from
+	ContextKey     string                                        // Context key where handlers read the token to give to the client
+	Expiry         time.Duration                                 // Cookie expiration duration
+	Secret         []byte                                        // HMAC secret. If empty a random one is generated, so set it when running several instances
 	SkipMethods    []string                                      // HTTP methods that don't require validation (safe methods)
 	ErrorHandler   func(*server.Context, error) *server.Response // Optional custom error handler
 	CookieSecure   bool                                          // Whether the cookie is Secure
 	CookieHTTPOnly bool                                          // Whether the cookie is HttpOnly
+	CookieSameSite http.SameSite                                 // The cookie's SameSite mode. Defaults to Lax
 }

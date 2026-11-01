@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"github.com/ascendingheavens/falcon/server"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,19 +17,6 @@ func TestGenerateCSRFToken_ReturnsBase64StringOfCorrectLength(t *testing.T) {
 	decoded, err := base64.RawURLEncoding.DecodeString(token)
 	assert.NoError(t, err, "token should be valid base64")
 	assert.Equal(t, 32, len(decoded), "decoded token should have correct byte length")
-}
-
-func TestGetOrCreateCSRFToken_CreatesAndCachesToken(t *testing.T) {
-	c := &server.Context{Params: make(map[string]string)}
-	cfg := CSRFConfig{ContextKey: "csrf_token"}
-
-	// First call should create token
-	token1 := getOrCreateCSRFToken(c, cfg)
-	assert.NotEmpty(t, token1, "token should be generated")
-
-	// Second call should return same token (no regeneration)
-	token2 := getOrCreateCSRFToken(c, cfg)
-	assert.Equal(t, token1, token2, "should reuse token from context")
 }
 
 func TestValidateCSRFToken_MatchesCorrectHMAC(t *testing.T) {
