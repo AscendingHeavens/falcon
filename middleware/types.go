@@ -71,7 +71,8 @@ type CORSConfig struct {
 
 // CSRFConfig defines configuration for CSRF protection middleware.
 type CSRFConfig struct {
-	TokenHeader    string                                        // Header the client must send the token in
+	TokenHeader    string                                        // Header the client can send the token in
+	TokenForm      string                                        // Form field the client can send the token in, for HTML forms
 	TokenCookie    string                                        // Cookie name holding the value the token is derived from
 	ContextKey     string                                        // Context key where handlers read the token to give to the client
 	Expiry         time.Duration                                 // Cookie expiration duration

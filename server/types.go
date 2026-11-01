@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 
@@ -93,6 +94,8 @@ type rawBody struct {
 	reader      io.Reader
 	file        string
 	location    string // The Location header of a redirect
+
+	buffer *bytes.Buffer // The pooled buffer holding data, returned once it's been written
 }
 
 // Settings holds the server-wide options the Context needs while handling a request.
@@ -101,6 +104,7 @@ type Settings struct {
 	ErrorMapper     func(err error) *Response // Turns application errors into responses, or returns nil to pass
 	BodyLimit       int64                     // Maximum size of a request body, in bytes
 	MultipartMemory int64                     // Maximum bytes of a multipart form kept in memory, the rest goes to disk
+	Renderer        *TemplateRenderer         // Renders templates for c.Render
 }
 
 // defaultSettings applies to a Context that wasn't created by a server.
@@ -129,8 +133,7 @@ type Context struct {
 	Params  Params
 	// Handled means the handler took over the Writer itself (websockets, server-sent
 	// events...), so the server must not write anything. Helpers like c.JSON don't set it.
-	Handled bool
-	// Templates *TemplateRenderer To be added
+	Handled   bool
 	Validator *validator.Validate
 	Values    map[string]any
 

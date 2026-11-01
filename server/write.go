@@ -180,6 +180,9 @@ func (c *Context) writeRaw(resp *Response) {
 		if len(raw.data) > 0 && bodyAllowed(resp.Code) {
 			_, _ = c.Writer.Write(raw.data)
 		}
+		if raw.buffer != nil {
+			releaseRenderBuffer(raw.buffer)
+		}
 	}
 }
 

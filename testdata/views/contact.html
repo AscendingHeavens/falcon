@@ -1,0 +1,7 @@
+{{template "layouts/base.html" .}}
+{{define "content"}}
+<form method="post" action="/contact">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <input name="message">
+</form>
+{{end}}

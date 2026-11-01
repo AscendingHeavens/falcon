@@ -3,6 +3,8 @@ package falcon
 import (
 	"context"
 	"errors"
+	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 	"slices"
@@ -245,8 +247,29 @@ func ignoreClosed(err error) error {
 	return err
 }
 
-// NewTemplateRenderer Encapsulates server.NewTemplateRenderer
-// func NewTemplateRenderer(pattern string, devMode bool, funcs template.FuncMap) *server.TemplateRenderer {
-// 	return server.NewTemplateRenderer(pattern, devMode, funcs)
-// }
-// To be added
+// SetRenderer sets the TemplateRenderer used by c.Render. Like middleware, it must be
+// set before the first request. With WithDebug, templates reload on every render.
+// Example:
+//
+//	renderer, err := falcon.NewTemplateRenderer("views", nil)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	app.SetRenderer(renderer)
+func (s *Server) SetRenderer(renderer *TemplateRenderer) {
+	s.mustNotBeBuilt("SetRenderer")
+	s.settings.Renderer = renderer
+}
+
+// NewTemplateRenderer parses every template (.html, .tmpl, .gohtml) under dir. Templates
+// are named by their path relative to dir, such as "users/show.html". Files under the
+// top-level layouts/ and partials/ folders are shared with every template.
+func NewTemplateRenderer(dir string, funcs template.FuncMap) (*TemplateRenderer, error) {
+	return server.NewTemplateRenderer(dir, funcs)
+}
+
+// NewTemplateRendererFS is like NewTemplateRenderer but reads templates from fsys, such
+// as an embed.FS, which ships them inside the binary.
+func NewTemplateRendererFS(fsys fs.FS, funcs template.FuncMap) (*TemplateRenderer, error) {
+	return server.NewTemplateRendererFS(fsys, funcs)
+}

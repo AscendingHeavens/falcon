@@ -153,6 +153,13 @@ func (c *Context) FormValue(name string) string {
 	return c.Request.FormValue(name)
 }
 
+// PostFormValue is like FormValue but only reads the request body, ignoring the URL query.
+// Bodies that aren't forms, such as JSON, are left unread for the handler.
+func (c *Context) PostFormValue(name string) string {
+	_ = c.parseMultipart() // Fails for anything not multipart, which PostFormValue handles itself
+	return c.Request.PostFormValue(name)
+}
+
 // BindForm parses form data and binds it to a map
 // Takes only the first value for each key
 func (c *Context) BindForm(dest map[string]string) error {

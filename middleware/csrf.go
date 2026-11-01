@@ -10,6 +10,7 @@ import (
 
 var defaultCSRFConfig = CSRFConfig{
 	TokenHeader:    "X-CSRF-Token",
+	TokenForm:      "csrf_token",
 	TokenCookie:    "csrf_token",
 	ContextKey:     "csrf_token",
 	Expiry:         24 * time.Hour,
@@ -34,16 +35,20 @@ func CSRF() Middleware {
 //   - cfg: CSRFConfig struct to override defaults (header, cookie, secret, expiry, etc.)
 //
 // It works as a signed double submit: a cookie holds a random value, and an unsafe
-// request must send the HMAC of that value in cfg.TokenHeader. Another site can make
-// a browser send the cookie, but it can't read it or compute the HMAC to send the header.
+// request must send the HMAC of that value, in cfg.TokenHeader or the cfg.TokenForm form
+// field. Another site can make a browser send the cookie, but it can't read it or
+// compute the HMAC.
 //
 // Handlers read the token to give to the client with c.Get(cfg.ContextKey), for example
-// from an endpoint the frontend calls first, or by rendering it into a page.
+// from an endpoint the frontend calls first, or by rendering it into a form:
+//
+//	<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 //
 // Behavior:
 //   - Skips validation for HTTP methods listed in cfg.SkipMethods.
-//   - Reads the token from the request header only: a browser attaches cookies to
-//     forged requests on its own, so a cookie can never prove anything by itself.
+//   - Reads the token from the header, then from the form body. Never from a cookie: a
+//     browser attaches cookies to forged requests on its own, so they prove nothing. Never
+//     from the URL query either, where tokens leak through logs and Referer headers.
 //   - Validates the token against the cookie and the server-side secret.
 //   - Returns 403 Forbidden if the token or cookie is missing or the token is wrong
 //     (or calls cfg.ErrorHandler if defined).
@@ -52,6 +57,9 @@ func CSRFWithConfig(cfg CSRFConfig) Middleware {
 	// Set defaults if empty
 	if cfg.TokenHeader == "" {
 		cfg.TokenHeader = defaultCSRFConfig.TokenHeader
+	}
+	if cfg.TokenForm == "" {
+		cfg.TokenForm = defaultCSRFConfig.TokenForm
 	}
 	if cfg.TokenCookie == "" {
 		cfg.TokenCookie = defaultCSRFConfig.TokenCookie
@@ -78,6 +86,9 @@ func CSRFWithConfig(cfg CSRFConfig) Middleware {
 
 			if !slices.Contains(cfg.SkipMethods, c.Request.Method) {
 				clientToken := c.Request.Header.Get(cfg.TokenHeader)
+				if clientToken == "" {
+					clientToken = c.PostFormValue(cfg.TokenForm)
+				}
 				if serverToken == "" || !validateCSRFToken(cfg.Secret, serverToken, clientToken) {
 					if cfg.ErrorHandler != nil {
 						return cfg.ErrorHandler(c, ErrCSRFInvalid)
