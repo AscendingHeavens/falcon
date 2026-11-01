@@ -17,11 +17,12 @@ type ValidationConfig struct {
 //
 //	app.Use(ValidationMiddleware(ValidationConfig{}))
 func ValidationMiddleware(cfg ValidationConfig) Middleware {
+	if cfg.Validator == nil {
+		cfg.Validator = server.NewValidator()
+	}
+
 	return func(next server.HandlerFunc) server.HandlerFunc {
 		return func(c *server.Context) *server.Response {
-			if cfg.Validator == nil {
-				cfg.Validator = validator.New()
-			}
 			c.SetValidator(cfg.Validator)
 			return next(c)
 		}

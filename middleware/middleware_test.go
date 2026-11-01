@@ -61,18 +61,19 @@ func TestRecovery_Panic_Returns500_JSON(t *testing.T) {
 	// This will trigger recovery middleware
 	resp := handler(c)
 
-	// resp will be nil because middleware wrote response manually
-	assert.Nil(t, resp)
+	assert.False(t, resp.Success)
+	assert.Equal(t, http.StatusInternalServerError, resp.Code)
 
-	// Now check the recorder output
+	// Now check what the client gets
+	c.WriteResponse(resp)
 	rec := c.Writer.(*httptest.ResponseRecorder)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 	body := rec.Body.String()
 	assert.Contains(t, body, "Internal Server Error")
-	assert.Contains(t, body, "boom")
+	assert.NotContains(t, body, "boom", "the panic message must not reach the client")
 }
 
-func TestRecovery_Panic_ReturnsHTML_WhenAcceptHeaderSet(t *testing.T) {
+func TestRecovery_Panic_IsAnEnvelopeEvenForBrowsers(t *testing.T) {
 	c := newTestContext(http.MethodGet)
 	c.Request.Header.Set("Accept", "text/html")
 	m := Recovery()
@@ -81,13 +82,78 @@ func TestRecovery_Panic_ReturnsHTML_WhenAcceptHeaderSet(t *testing.T) {
 		panic("boom")
 	})
 
-	resp := handler(c)
-
-	assert.Nil(t, resp)
+	c.WriteResponse(handler(c))
 
 	rec := c.Writer.(*httptest.ResponseRecorder)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
-	assert.Contains(t, rec.Body.String(), "<h1>500 Internal Server Error</h1>")
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+}
+
+func TestRecovery_AbortHandlerPassesThrough(t *testing.T) {
+	c := newTestContext(http.MethodGet)
+	handler := Recovery()(func(ctx *server.Context) *server.Response {
+		panic(http.ErrAbortHandler)
+	})
+
+	assert.PanicsWithValue(t, http.ErrAbortHandler, func() { handler(c) })
+}
+
+func TestConditionalMiddleware_AppliesTo(t *testing.T) {
+	tests := []struct {
+		pattern string
+		route   string
+		want    bool
+	}{
+		{"/api/*", "/api", true},
+		{"/api/*", "/api/", true},
+		{"/api/*", "/api/users", true},
+		{"/api/*", "/api/users/:id", true},
+		{"/api/*", "/apiary", false},
+		{"/api/*", "/ap", false},
+		{"/api/*", "/other/api", false},
+		{"/*", "/", true},
+		{"/*", "/anything/at/all", true},
+		{"/health", "/health", true},
+		{"/health", "/healthy", false},
+		{"/health", "/health/deep", false},
+		{"/health", "/health/", false},
+		{"/users/:id", "/users/:id", true},
+		{"/users/:id", "/users/:name", false},
+		{"/static/*filepath", "/static/*filepath", true},
+		{"/", "/", true},
+		{"/", "/x", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.pattern+" on "+tt.route, func(t *testing.T) {
+			noop := func(next server.HandlerFunc) server.HandlerFunc { return next }
+
+			useIf := NewConditionalMiddleware(noop, false, []string{tt.pattern})
+			assert.Equal(t, tt.want, useIf.AppliesTo(tt.route))
+
+			useIfNot := NewConditionalMiddleware(noop, true, []string{tt.pattern})
+			assert.Equal(t, !tt.want, useIfNot.AppliesTo(tt.route))
+		})
+	}
+
+	t.Run("any of several patterns", func(t *testing.T) {
+		noop := func(next server.HandlerFunc) server.HandlerFunc { return next }
+		cm := NewConditionalMiddleware(noop, false, []string{"/health", "/auth/*"})
+		assert.True(t, cm.AppliesTo("/health"))
+		assert.True(t, cm.AppliesTo("/auth/login"))
+		assert.False(t, cm.AppliesTo("/users"))
+	})
+}
+
+func TestConditionalMiddleware_MalformedPatternsPanic(t *testing.T) {
+	noop := func(next server.HandlerFunc) server.HandlerFunc { return next }
+
+	assert.Panics(t, func() { NewConditionalMiddleware(noop, false, nil) }, "no patterns")
+	assert.Panics(t, func() { NewConditionalMiddleware(noop, false, []string{"api/*"}) }, "no leading slash")
+	assert.Panics(t, func() { NewConditionalMiddleware(noop, false, []string{"*"}) }, "bare wildcard")
+	assert.PanicsWithValue(t,
+		`falcon: middleware pattern "/api*" matches whole segments only; did you mean "/api/*"?`,
+		func() { NewConditionalMiddleware(noop, false, []string{"/api*"}) })
 }
 
 func TestProfilingMiddleware_CallsNextAndReturnsResponse(t *testing.T) {
@@ -116,7 +182,8 @@ func TestRecovery_Panic_WhenAlreadyHandled_DoesNotWriteAgain(t *testing.T) {
 	})
 
 	resp := handler(c)
-	assert.Nil(t, resp)
+	assert.NotNil(t, resp, "outer middleware must always get a Response")
+	c.WriteResponse(resp)
 
 	rec := c.Writer.(*httptest.ResponseRecorder)
 	// Should NOT write anything new, response should remain empty

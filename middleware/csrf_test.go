@@ -139,7 +139,7 @@ func TestCSRF_Rejects(t *testing.T) {
 func TestCSRF_RejectionIsAnEnvelope(t *testing.T) {
 	var called bool
 	c := newCSRFTContext(http.MethodPost, "")
-	csrfHandler(CSRF(), &called)(c)
+	c.WriteResponse(csrfHandler(CSRF(), &called)(c))
 
 	rec := c.Writer.(*httptest.ResponseRecorder)
 	assert.Equal(t, http.StatusForbidden, rec.Code)

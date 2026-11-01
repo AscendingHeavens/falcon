@@ -35,6 +35,10 @@ var (
 	// paramSink keeps param reads from being optimized away, and lets the tests
 	// check that the param really was extracted.
 	paramSink string
+
+	// handledResponse lets Falcon's empty handlers write nothing and allocate nothing,
+	// like empty Gin and Echo handlers, so those benchmarks measure routing alone.
+	handledResponse = &falcon.Response{Success: true, Code: 200}
 )
 
 // framework builds an http.Handler for a route set, one way per kind of handler.
@@ -77,13 +81,16 @@ var frameworks = []framework{
 	{
 		name: "falcon",
 		noop: func(routes []route) http.Handler {
-			// Returning nil is the only way to have Falcon write nothing today.
-			return newFalcon(routes, func(c *falcon.Context) *falcon.Response { return nil })
+			return newFalcon(routes, func(c *falcon.Context) *falcon.Response {
+				c.Handled = true
+				return handledResponse
+			})
 		},
 		param: func(routes []route) http.Handler {
 			return newFalcon(routes, func(c *falcon.Context) *falcon.Response {
 				paramSink = c.Param("id")
-				return nil
+				c.Handled = true
+				return handledResponse
 			})
 		},
 		json: func(routes []route) http.Handler {

@@ -1,10 +1,14 @@
 package falcon
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -246,8 +250,8 @@ func TestChains_OrderIsGlobalConditionalGroupHandler(t *testing.T) {
 	// Registered in the opposite order on purpose.
 	group.Use(tracer("group 1", &trace))
 	group.Use(tracer("group 2", &trace))
-	s.UseIf("/api/*", tracer("if 1", &trace))
-	s.UseIf("/api/*", tracer("if 2", &trace))
+	s.UseIf(tracer("if 1", &trace), "/api/*")
+	s.UseIf(tracer("if 2", &trace), "/api/*")
 	s.Use(tracer("global 1", &trace))
 	s.Use(tracer("global 2", &trace))
 
@@ -263,7 +267,7 @@ func TestChains_OrderIsGlobalConditionalGroupHandler(t *testing.T) {
 func TestChains_UseIfOnlyWrapsMatchingRoutes(t *testing.T) {
 	var trace []string
 	s := New()
-	s.UseIf("/api/*", tracer("if", &trace))
+	s.UseIf(tracer("if", &trace), "/api/*")
 	s.GET("/api/users/:id", ok)
 	s.GET("/public", ok)
 
@@ -274,12 +278,160 @@ func TestChains_UseIfOnlyWrapsMatchingRoutes(t *testing.T) {
 	assert.Equal(t, []string{"if"}, trace)
 }
 
+func TestChains_UseIfNotWrapsEverythingElse(t *testing.T) {
+	var trace []string
+	s := New()
+	s.UseIfNot(tracer("auth", &trace), "/health", "/auth/*")
+	s.GET("/health", ok)
+	s.GET("/healthy", ok)
+	s.POST("/auth/login", ok)
+	s.GET("/users/:id", ok)
+
+	for _, skipped := range [][2]string{{"GET", "/health"}, {"POST", "/auth/login"}} {
+		trace = nil
+		do(s, skipped[0], skipped[1])
+		assert.Empty(t, trace, skipped[1])
+	}
+
+	for _, wrapped := range []string{"/healthy", "/users/1"} {
+		trace = nil
+		do(s, "GET", wrapped)
+		assert.Equal(t, []string{"auth"}, trace, wrapped)
+	}
+}
+
+func TestChains_ConditionalMiddlewareOnlyRunsForRoutes(t *testing.T) {
+	var trace []string
+	s := New()
+	s.UseIf(tracer("if", &trace), "/*")
+	s.UseIfNot(tracer("not", &trace), "/nothing")
+	s.GET("/x", ok)
+
+	assert.Equal(t, 404, do(s, "GET", "/nope").Code)
+	assert.Equal(t, 405, do(s, "POST", "/x").Code)
+	assert.Empty(t, trace, "there's no route whose path the patterns could be compared with")
+}
+
+func TestChains_NilHandlerIsALoud500(t *testing.T) {
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	var seen []*Response
+	s := New()
+	s.Use(func(next HandlerFunc) HandlerFunc {
+		return func(c *Context) *Response {
+			resp := next(c)
+			seen = append(seen, resp)
+			return resp
+		}
+	})
+	s.GET("/users/:id", func(c *Context) *Response { return nil })
+
+	rec := do(s, "GET", "/users/1")
+
+	assert.Equal(t, 500, rec.Code)
+	assert.Equal(t, "Internal Server Error", decode(t, rec).Message)
+	assert.NotContains(t, rec.Body.String(), "nil Response", "that's for the log, not the client")
+	assert.Contains(t, logs.String(), "handler for GET /users/:id returned nil Response")
+	assert.NotNil(t, seen[0], "middleware must never get a nil Response from a handler")
+}
+
+func TestChains_NilHandlerShowsTheCauseInDebug(t *testing.T) {
+	s := New(WithDebug())
+	s.GET("/x", func(c *Context) *Response { return nil })
+
+	assert.Contains(t, do(s, "GET", "/x").Body.String(), "handler for GET /x returned nil Response")
+}
+
+func TestChains_NilIsFineAfterTakingOverTheWriter(t *testing.T) {
+	s := New()
+	s.Use(middleware.Logger())
+	s.GET("/ws", func(c *Context) *Response {
+		c.Writer.WriteHeader(101)
+		c.Handled = true
+		return nil
+	})
+
+	rec := do(s, "GET", "/ws")
+
+	assert.Equal(t, 101, rec.Code)
+	assert.Empty(t, rec.Body.String())
+}
+
+func TestChains_NilFromAMiddlewareIsA500(t *testing.T) {
+	s := New()
+	s.Use(middleware.Logger())
+	s.Use(middleware.ProfilingMiddleware())
+	s.Use(func(next HandlerFunc) HandlerFunc {
+		return func(c *Context) *Response {
+			next(c)
+			return nil
+		}
+	})
+	s.GET("/x", ok)
+
+	assert.Equal(t, 500, do(s, "GET", "/x").Code, "Logger and Profiling must also survive the nil")
+}
+
+func TestUploads_BodyLimitApplies(t *testing.T) {
+	upload := func(s *Server, size int) *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		w := multipart.NewWriter(&body)
+		part, err := w.CreateFormFile("file", "a.bin")
+		assert.NoError(t, err)
+		_, err = part.Write(bytes.Repeat([]byte("x"), size))
+		assert.NoError(t, err)
+		assert.NoError(t, w.Close())
+
+		req := httptest.NewRequest("POST", "/upload", &body)
+		req.Header.Set("Content-Type", w.FormDataContentType())
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		return rec
+	}
+	newServer := func(options ...Option) *Server {
+		s := New(options...)
+		s.POST("/upload", func(c *Context) *Response {
+			file, header, err := c.FormFile("file")
+			if err != nil {
+				return c.Error(err)
+			}
+			defer file.Close()
+			return c.OK("uploaded", header.Size)
+		})
+		return s
+	}
+
+	t.Run("within the limit", func(t *testing.T) {
+		assert.Equal(t, 200, upload(newServer(WithBodyLimit(1<<20)), 1<<10).Code)
+	})
+	t.Run("over the limit is a 413", func(t *testing.T) {
+		rec := upload(newServer(WithBodyLimit(1<<10)), 1<<20)
+		assert.Equal(t, 413, rec.Code)
+		assert.Equal(t, "Request body too large", decode(t, rec).Message)
+	})
+	t.Run("the default limit applies too", func(t *testing.T) {
+		assert.Equal(t, 413, upload(newServer(), 11<<20).Code)
+	})
+	t.Run("a raised limit allows more", func(t *testing.T) {
+		assert.Equal(t, 200, upload(newServer(WithBodyLimit(20<<20)), 11<<20).Code)
+	})
+	t.Run("a pooled Context doesn't skip the limit on its next request", func(t *testing.T) {
+		s := newServer(WithBodyLimit(1 << 10))
+		assert.Equal(t, 200, upload(s, 10).Code)
+		assert.Equal(t, 413, upload(s, 1<<20).Code)
+		assert.Equal(t, 200, upload(s, 10).Code)
+		assert.Equal(t, 413, upload(s, 1<<20).Code)
+	})
+}
+
 func TestChains_RecoveryCoversConditionalMiddleware(t *testing.T) {
 	s := New()
 	s.Use(middleware.Recovery())
-	s.UseIf("/api/*", func(next HandlerFunc) HandlerFunc {
+	s.UseIf(func(next HandlerFunc) HandlerFunc {
 		return func(c *Context) *Response { panic("auth exploded") }
-	})
+	}, "/api/*")
 	s.GET("/api/x", ok)
 
 	assert.Equal(t, 500, do(s, "GET", "/api/x").Code)
@@ -294,7 +446,8 @@ func TestChains_RegisteringAfterServingPanics(t *testing.T) {
 	mw := func(next HandlerFunc) HandlerFunc { return next }
 	for name, register := range map[string]func(){
 		"Use":          func() { s.Use(mw) },
-		"UseIf":        func() { s.UseIf("/x", mw) },
+		"UseIf":        func() { s.UseIf(mw, "/x") },
+		"UseIfNot":     func() { s.UseIfNot(mw, "/x") },
 		"Handle":       func() { s.GET("/y", ok) },
 		"Group.Use":    func() { group.Use(mw) },
 		"Group.Handle": func() { group.GET("/y", ok) },
@@ -422,19 +575,30 @@ func (w nopWriter) Write(p []byte) (int, error) { return len(p), nil }
 func (w nopWriter) WriteHeader(int)             {}
 
 func TestServeHTTP_DoesNotAllocateOnRoutedRequests(t *testing.T) {
+	if raceEnabled {
+		t.Skip("allocation counts mean nothing under the race detector")
+	}
+
 	s := New()
 	s.Use(func(next HandlerFunc) HandlerFunc {
 		return func(c *Context) *Response { return next(c) }
 	})
-	s.UseIf("/users/*", func(next HandlerFunc) HandlerFunc {
+	s.UseIf(func(next HandlerFunc) HandlerFunc {
 		return func(c *Context) *Response { return next(c) }
+	}, "/users/*")
+
+	// A shared Response keeps the handler's own allocation out of the count.
+	handled := &Response{Success: true, Code: 200}
+	s.GET("/ping", func(c *Context) *Response {
+		c.Handled = true
+		return handled
 	})
-	s.GET("/ping", func(c *Context) *Response { return nil })
 	s.GET("/users/:id/posts/:post", func(c *Context) *Response {
 		if c.Param("post") == "" {
 			t.Error("param not set")
 		}
-		return nil
+		c.Handled = true
+		return handled
 	})
 
 	w := nopWriter{header: make(http.Header)}

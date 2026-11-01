@@ -57,12 +57,12 @@ func TestServer_ConditionalMiddleware(t *testing.T) {
 	s := New()
 
 	called := false
-	s.UseIf("/api/*", func(next server.HandlerFunc) server.HandlerFunc {
+	s.UseIf(func(next server.HandlerFunc) server.HandlerFunc {
 		return func(c *server.Context) *server.Response {
 			called = true
 			return next(c)
 		}
-	})
+	}, "/api/*")
 
 	handlerCalled := false
 	handler := func(c *server.Context) *server.Response {

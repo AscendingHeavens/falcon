@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -104,37 +103,4 @@ func TestShouldBindBody(t *testing.T) {
 		err := c.shouldBindBody(&dest, "application/json", json.Unmarshal)
 		assert.Error(t, err)
 	})
-}
-
-func TestWriteResponse(t *testing.T) {
-	t.Run("writes when not handled", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		c := &Context{Writer: rec}
-		body := []byte("hello")
-		c.writeResponse(200, "text/plain", body)
-		assert.Equal(t, 200, rec.Code)
-		assert.Equal(t, "text/plain", rec.Header().Get("Content-Type"))
-		assert.Equal(t, "hello", rec.Body.String())
-		assert.True(t, c.Handled)
-	})
-	t.Run("skips when handled", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		c := &Context{Writer: rec, Handled: true}
-		c.writeResponse(200, "text/plain", []byte("hi"))
-
-		// Code may default to 200, so check body and headers instead
-		assert.Empty(t, rec.Body.String())
-		assert.False(t, rec.Header().Get("Content-Type") == "text/plain")
-	})
-
-}
-
-func TestWriteErrorResponse(t *testing.T) {
-	rec := httptest.NewRecorder()
-	c := &Context{Writer: rec}
-	err := errors.New("oops")
-	c.writeErrorResponse(400, "bad request", err)
-	assert.Equal(t, 400, rec.Code)
-	assert.Contains(t, rec.Body.String(), "bad request")
-	assert.Contains(t, rec.Body.String(), "oops")
 }

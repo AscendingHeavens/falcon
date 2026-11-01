@@ -30,7 +30,6 @@ func TestJWTMiddleware(t *testing.T) {
 
 		assert.False(t, resp.Success)
 		assert.Equal(t, http.StatusUnauthorized, resp.Code)
-		assert.True(t, c.Handled)
 	})
 
 	t.Run("Invalid token", func(t *testing.T) {
@@ -44,7 +43,6 @@ func TestJWTMiddleware(t *testing.T) {
 
 		assert.False(t, resp.Success)
 		assert.Equal(t, http.StatusUnauthorized, resp.Code)
-		assert.True(t, c.Handled)
 	})
 
 	t.Run("Valid token sets claims and calls next", func(t *testing.T) {

@@ -1,10 +1,11 @@
 package falcon
 
 import (
-	"encoding/json"
+	"context"
+	"errors"
 	"log"
 	"net/http"
-	"strings"
+	"slices"
 	"sync"
 
 	"github.com/ascendingheavens/falcon/middleware"
@@ -15,14 +16,20 @@ import (
 // Example:
 //
 //	server := falcon.New()
-func New() *Server {
+//	server := falcon.New(falcon.WithDebug())
+func New(options ...Option) *Server {
 	s := &Server{
 		router:      server.NewRouter(),
 		middlewares: make([]middleware.Middleware, 0),
 		routeGroups: make(map[*server.Route]*Group),
+		settings:    server.DefaultSettings(),
+		timeouts:    defaultTimeouts,
+	}
+	for _, option := range options {
+		option(s)
 	}
 	s.pool.New = func() any {
-		return &server.Context{Params: make(server.Params, 0, 8)}
+		return server.NewContext(&s.settings)
 	}
 	// OnceFunc repeats a panic on every call, so a middleware that panics while
 	// being built fails every request instead of leaving a half-built server.
@@ -41,15 +48,23 @@ func (s *Server) Use(mw middleware.Middleware) {
 	s.middlewares = append(s.middlewares, mw)
 }
 
-// UseIf registers a conditional middleware that only runs on routes whose path
-// matches the given pattern. Patterns can include a wildcard '*' at the end.
-// Example: UseIf("/api/v1/*", AuthMiddleware())
-func (s *Server) UseIf(pattern string, mw middleware.Middleware) {
+// UseIf registers a middleware that only runs on routes matching one of the patterns.
+// "/api/*" matches "/api" and everything below it, but not "/apiary"; a pattern with
+// no wildcard matches only the route with exactly that path. Patterns are resolved
+// once per route, so they cost nothing per request. They panic if malformed.
+// Requests no route matches, such as 404s, don't run conditional middleware.
+// Example: UseIf(AuthMiddleware(), "/api/v1/*", "/admin/*")
+func (s *Server) UseIf(mw middleware.Middleware, patterns ...string) {
 	s.mustNotBeBuilt("UseIf")
-	s.conditionalMiddleware = append(s.conditionalMiddleware, middleware.ConditionalMiddleware{
-		Pattern:    pattern,
-		Middleware: mw,
-	})
+	s.conditionalMiddleware = append(s.conditionalMiddleware, middleware.NewConditionalMiddleware(mw, false, patterns))
+}
+
+// UseIfNot registers a middleware that runs on every route except those matching one
+// of the patterns, which work as in UseIf.
+// Example: UseIfNot(AuthMiddleware(), "/health", "/auth/*")
+func (s *Server) UseIfNot(mw middleware.Middleware, patterns ...string) {
+	s.mustNotBeBuilt("UseIfNot")
+	s.conditionalMiddleware = append(s.conditionalMiddleware, middleware.NewConditionalMiddleware(mw, true, patterns))
 }
 
 // Handle registers a route with a specific HTTP method and path.
@@ -73,13 +88,13 @@ func (s *Server) buildChains() {
 	s.built.Store(true)
 
 	for _, rt := range s.router.Routes() {
-		h := rt.Handler
+		h := guardNil(rt.Handler, rt.Method+" "+rt.Path)
 		if g := s.routeGroups[rt]; g != nil {
 			h = wrap(h, g.Middlewares)
 		}
 		for i := len(s.conditionalMiddleware) - 1; i >= 0; i-- {
 			cm := s.conditionalMiddleware[i]
-			if strings.HasPrefix(rt.Path, strings.TrimSuffix(cm.Pattern, "*")) {
+			if cm.AppliesTo(rt.Path) {
 				h = cm.Middleware(h)
 			}
 		}
@@ -90,6 +105,22 @@ func (s *Server) buildChains() {
 	s.methodNotAllowed = wrap(s.methodNotAllowedHandler, s.middlewares)
 	s.autoOptions = wrap(s.autoOptionsHandler, s.middlewares)
 	s.slashRedirect = wrap(slashRedirectHandler, s.middlewares)
+}
+
+// guardNil makes a handler that returns nil fail loudly, because an empty 200 would hide
+// the bug. It also means middleware never gets a nil Response from a handler. A handler
+// that took over the Writer has already responded, so returning nil is fine for it.
+func guardNil(handler server.HandlerFunc, route string) server.HandlerFunc {
+	return func(c *server.Context) *server.Response {
+		resp := handler(c)
+		if resp != nil {
+			return resp
+		}
+		if c.Handled {
+			return &server.Response{Success: true, Message: "Handled by the handler", Code: http.StatusOK}
+		}
+		return c.Error(errors.New("handler for " + route + " returned nil Response"))
+	}
 }
 
 // wrap applies middlewares to h in reverse, so that the first one added runs first.
@@ -142,30 +173,76 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		handler = s.fallback(c)
 	}
 
-	// Execute the handler
-	resp := handler(c)
-
-	// Write JSON response
-	if !c.Handled && resp != nil {
-		c.Writer.Header().Set("Content-Type", "application/json")
-		c.Writer.WriteHeader(resp.Code)
-		if err := json.NewEncoder(c.Writer).Encode(resp); err != nil {
-			log.Printf("failed to encode JSON response: %v", err)
-		}
-	}
+	// Execute the handler and everything wrapping it, then send what they settled on
+	c.WriteResponse(handler(c))
 
 	// A panicking handler never gets here, so its Context isn't reused.
 	c.Reset(nil, nil)
 	s.pool.Put(c)
 }
 
-// Start runs the HTTP server on the specified address. It logs the startup
-// and will terminate the program if ListenAndServe returns an error.
-func (s *Server) Start(addr string) {
+// Start runs the HTTP server on the specified address and blocks until it stops.
+// It returns nil after a Shutdown, and otherwise the error that stopped it.
+//
+// Example:
+//
+//	if err := app.Start(":8080"); err != nil {
+//		log.Fatal(err)
+//	}
+func (s *Server) Start(addr string) error {
 	log.Printf("Starting server on %s", addr)
-	if err := http.ListenAndServe(addr, s); err != nil {
-		log.Fatal(err)
+	return ignoreClosed(s.newHTTPServer(addr).ListenAndServe())
+}
+
+// Shutdown stops the server gracefully: it stops accepting connections and waits for
+// the requests in progress to finish, or for ctx to end, whichever comes first.
+//
+// Example:
+//
+//	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+//	defer cancel()
+//	err := app.Shutdown(ctx)
+func (s *Server) Shutdown(ctx context.Context) error {
+	s.mu.Lock()
+	s.shutdown = true
+	httpServers := slices.Clone(s.httpServers)
+	s.mu.Unlock()
+
+	var errs []error
+	for _, srv := range httpServers {
+		errs = append(errs, srv.Shutdown(ctx))
 	}
+	return errors.Join(errs...)
+}
+
+// newHTTPServer creates an http.Server for this Server, with its timeouts, and
+// records it so that Shutdown can stop it.
+func (s *Server) newHTTPServer(addr string) *http.Server {
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           s,
+		ReadHeaderTimeout: s.timeouts.ReadHeader,
+		ReadTimeout:       s.timeouts.Read,
+		WriteTimeout:      s.timeouts.Write,
+		IdleTimeout:       s.timeouts.Idle,
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.shutdown {
+		// Shutdown came first, so this server must not start listening.
+		_ = srv.Close()
+	}
+	s.httpServers = append(s.httpServers, srv)
+	return srv
+}
+
+// ignoreClosed hides the error a server always returns after a graceful Shutdown.
+func ignoreClosed(err error) error {
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
 }
 
 // NewTemplateRenderer Encapsulates server.NewTemplateRenderer

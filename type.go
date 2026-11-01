@@ -46,7 +46,32 @@ type Server struct {
 	methodNotAllowed server.HandlerFunc
 	autoOptions      server.HandlerFunc
 	slashRedirect    server.HandlerFunc
+
+	// settings is shared with every Context, which reads it to handle requests.
+	settings server.Settings
+
+	// timeouts are applied to every http.Server this Server starts.
+	timeouts Timeouts
+
+	// mu guards httpServers and shutdown.
+	mu sync.Mutex
+
+	// httpServers are the listeners started so far, for Shutdown to stop.
+	httpServers []*http.Server
+
+	// shutdown records that Shutdown was called, in case Start hasn't run yet.
+	shutdown bool
 }
+
+// HTTPError is an alias to server.HTTPError, an error that knows which
+// response it should become. Pass it to c.Error.
+type HTTPError = server.HTTPError
+
+// ValidationError is an alias to server.ValidationError, returned by c.Validate.
+type ValidationError = server.ValidationError
+
+// FieldError is an alias to server.FieldError, one invalid field in a ValidationError.
+type FieldError = server.FieldError
 
 // Group represents a collection of routes that share a common path prefix
 // and middleware stack. Useful for organizing related endpoints like `/api/v1/*`.
@@ -89,7 +114,7 @@ type HandlerFunc = server.HandlerFunc
 // Implementations should provide the startTLSServer method to handle
 // the server startup logic for HTTPS.
 type TLSStarter interface {
-	startTLSServer(*http.Server)
+	startTLSServer(*http.Server) error
 }
 
 // TemplateRenderer is an alias for server.TemplateRenderer.

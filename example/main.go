@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 
 	falcon "github.com/ascendingheavens/falcon"
@@ -16,7 +17,7 @@ func main() {
 	app.Use(middleware.ProfilingMiddleware())
 
 	// Conditional middleware
-	app.UseIf("/api/v1/*", AuthMiddleware())
+	app.UseIf(AuthMiddleware(), "/api/v1/*")
 
 	// Top-level route
 	app.GET("/ping", func(c *falcon.Context) *falcon.Response {
@@ -60,7 +61,9 @@ func main() {
 	})
 
 	// Start server
-	app.Start(":8080")
+	if err := app.Start(":8080"); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func AuthMiddleware() falcon.Middleware {
@@ -81,7 +84,7 @@ func AuthMiddleware() falcon.Middleware {
 func Signup(ctx *falcon.Context) *falcon.Response {
 	var req struct{}
 	if err := ctx.BindJSON(&req); err != nil {
-		return nil
+		return ctx.Error(err)
 	}
 	return &falcon.Response{
 		Message: "Signup successful",

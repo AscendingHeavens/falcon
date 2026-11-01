@@ -45,7 +45,7 @@ func TestBind_JSON_Fail(t *testing.T) {
 
 	err := c.Bind(&p)
 	assert.Error(t, err)
-	assert.Equal(t, http.StatusBadRequest, c.Writer.(*httptest.ResponseRecorder).Result().StatusCode)
+	assert.Equal(t, http.StatusBadRequest, c.Error(err).Code)
 }
 
 func TestBind_XML_Pass(t *testing.T) {
@@ -69,7 +69,7 @@ func TestBind_XML_Fail(t *testing.T) {
 
 	err := c.Bind(&p)
 	assert.Error(t, err)
-	assert.Equal(t, http.StatusBadRequest, c.Writer.(*httptest.ResponseRecorder).Result().StatusCode)
+	assert.Equal(t, http.StatusBadRequest, c.Error(err).Code)
 }
 
 func TestBind_UnsupportedContentType(t *testing.T) {
@@ -81,7 +81,7 @@ func TestBind_UnsupportedContentType(t *testing.T) {
 
 	err := c.Bind(&p)
 	assert.Error(t, err)
-	assert.Equal(t, http.StatusBadRequest, c.Writer.(*httptest.ResponseRecorder).Result().StatusCode)
+	assert.Equal(t, http.StatusBadRequest, c.Error(err).Code)
 }
 
 func TestBindJSON_ValidJSON_Passes(t *testing.T) {
@@ -106,11 +106,40 @@ func TestBindJSON_InvalidJSON_Returns400(t *testing.T) {
 	err := c.BindJSON(&p)
 	assert.Error(t, err)
 
-	// Verify 400 response
+	// Nothing is written until the server sends what the handler returns
 	rec := c.Writer.(*httptest.ResponseRecorder)
+	assert.Empty(t, rec.Body.String())
+
+	// Verify 400 response
+	c.WriteResponse(c.Error(err))
 	assert.Equal(t, http.StatusBadRequest, rec.Result().StatusCode)
 	body := rec.Body.String()
 	assert.Contains(t, body, "Invalid JSON body")
+	assert.NotContains(t, body, "unexpected end", "the parser's error must not reach the client")
+}
+
+func TestBind_BodyOverTheLimitIs413(t *testing.T) {
+	type payload struct {
+		Name string `json:"name"`
+	}
+	c := newTestContextWithBody(http.MethodPost, "application/json", `{"name":"`+strings.Repeat("x", 100)+`"}`)
+	c.settings = &Settings{BodyLimit: 10}
+	var p payload
+
+	resp := c.Error(c.BindJSON(&p))
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, resp.Code)
+	assert.Equal(t, "Request body too large", resp.Message)
+}
+
+func TestBind_ReturnsNilOnSuccess(t *testing.T) {
+	c := newTestContextWithBody(http.MethodPost, "application/json", `{}`)
+	var p struct{}
+
+	// Returning a nil *HTTPError as an error would make "err != nil" true in every handler.
+	assert.True(t, c.Bind(&p) == nil)
+	c = newTestContextWithBody(http.MethodPost, "application/json", `{}`)
+	assert.True(t, c.BindJSON(&p) == nil)
 }
 
 func TestBindXML_ValidXML_Passes(t *testing.T) {
@@ -136,6 +165,7 @@ func TestBindXML_InvalidXML_Returns400(t *testing.T) {
 	assert.Error(t, err)
 
 	rec := c.Writer.(*httptest.ResponseRecorder)
+	c.WriteResponse(c.Error(err))
 	assert.Equal(t, http.StatusBadRequest, rec.Result().StatusCode)
 	body := rec.Body.String()
 	assert.Contains(t, body, "Invalid XML body")

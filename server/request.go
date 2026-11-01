@@ -12,43 +12,46 @@ import (
 	"strings"
 )
 
-const (
-	maxBodySize   = 10 << 20 // 10MB
-	maxMemorySize = 32 << 20 // 32MB for multipart
-)
-
 // Bind reads the request body and decodes it into dest based on Content-Type.
-// Automatically writes a 400 Bad Request response if binding fails.
+// If binding fails it returns an *HTTPError, ready to pass to c.Error, with a message
+// that's safe to show to clients. Use ShouldBind for the plain underlying error.
+//
+// Example:
+//
+//	if err := c.Bind(&req); err != nil {
+//		return c.Error(err)
+//	}
 func (c *Context) Bind(dest any) error {
-	if err := c.ShouldBind(dest); err != nil {
-		c.writeErrorResponse(http.StatusBadRequest, "Invalid request body", err)
-		return err
-	}
-	return nil
+	return bindError("Invalid request body", c.ShouldBind(dest))
 }
 
 // BindJSON enforces JSON Content-Type and decodes into dest.
-// Automatically writes 400 response on error.
+// If binding fails it returns an *HTTPError, like Bind.
 func (c *Context) BindJSON(dest any) error {
-	if err := c.ShouldBindJSON(dest); err != nil {
-		c.writeErrorResponse(http.StatusBadRequest, "Invalid JSON body", err)
-		return err
-	}
-	return nil
+	return bindError("Invalid JSON body", c.ShouldBindJSON(dest))
 }
 
 // BindXML enforces XML Content-Type and decodes into dest.
-// Automatically writes 400 response on error.
+// If binding fails it returns an *HTTPError, like Bind.
 func (c *Context) BindXML(dest any) error {
-	if err := c.ShouldBindXML(dest); err != nil {
-		c.writeErrorResponse(http.StatusBadRequest, "Invalid XML body", err)
-		return err
+	return bindError("Invalid XML body", c.ShouldBindXML(dest))
+}
+
+// bindError turns a binding failure into an *HTTPError. It's nil if err is nil.
+func bindError(message string, err error) error {
+	if err == nil {
+		return nil
 	}
-	return nil
+
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		return &HTTPError{Code: http.StatusRequestEntityTooLarge, Message: "Request body too large", Err: err}
+	}
+	return &HTTPError{Code: http.StatusBadRequest, Message: message, Err: err}
 }
 
 // ShouldBind attempts to decode the request body into dest based on Content-Type
-// without automatically writing an error response.
+// and returns the underlying error if it fails.
 func (c *Context) ShouldBind(dest any) error {
 	contentType := c.Request.Header.Get("Content-Type")
 	if contentType == "" {
@@ -86,6 +89,7 @@ func (c *Context) ShouldBindXML(dest any) error {
 
 // ShouldBindForm binds application/x-www-form-urlencoded form values into a struct.
 func (c *Context) ShouldBindForm(dest any) error {
+	c.limitBody()
 	if err := c.Request.ParseForm(); err != nil {
 		return fmt.Errorf("failed to parse form: %w", err)
 	}
@@ -97,7 +101,7 @@ func (c *Context) ShouldBindForm(dest any) error {
 
 // ShouldBindMultipart binds multipart form to struct.
 func (c *Context) ShouldBindMultipart(dest any) error {
-	if err := c.Request.ParseMultipartForm(maxMemorySize); err != nil {
+	if err := c.parseMultipart(); err != nil {
 		return fmt.Errorf("failed to parse multipart form: %w", err)
 	}
 	return c.bindFormToStruct(c.Request.MultipartForm.Value, dest)
@@ -130,15 +134,22 @@ func (c *Context) QueryArray(key string) []string {
 
 // FormFile retrieves the file from a multipart form.
 // It returns the first file for the provided form key.
+// A request over the server's body limit gives an error that c.Error turns into a 413;
+// raise the limit with falcon.WithBodyLimit if you accept large uploads.
 // Example: <input type="file" name="avatar" /> -> c.FormFile("avatar")
 func (c *Context) FormFile(name string) (multipart.File, *multipart.FileHeader, error) {
+	if err := c.parseMultipart(); err != nil {
+		return nil, nil, err
+	}
 	return c.Request.FormFile(name)
 }
 
 // FormValue returns the first value for the named component of the POST or PUT request body.
-// It calls ParseMultipartForm and ParseForm if necessary.
+// It calls ParseMultipartForm and ParseForm if necessary. It can't report errors, so a
+// request over the server's body limit gives "".
 // Example: <input type="text" name="username" /> -> c.FormValue("username")
 func (c *Context) FormValue(name string) string {
+	_ = c.parseMultipart() // Fails for anything not multipart, which FormValue handles itself
 	return c.Request.FormValue(name)
 }
 
@@ -158,6 +169,7 @@ func (c *Context) BindForm(dest map[string]string) error {
 	}
 
 	// Parse the form (this handles both POST body and URL query parameters)
+	c.limitBody()
 	if err := c.Request.ParseForm(); err != nil {
 		return fmt.Errorf("failed to parse form: %w", err)
 	}
@@ -186,6 +198,7 @@ func (c *Context) BindFormAll() (url.Values, error) {
 	}
 
 	// Parse the form
+	c.limitBody()
 	if err := c.Request.ParseForm(); err != nil {
 		return nil, fmt.Errorf("failed to parse form: %w", err)
 	}

@@ -61,7 +61,9 @@ func TestCORS_PreflightRequest_SetsNoContentAndStopsChain(t *testing.T) {
 	// FIX: type assert to *httptest.ResponseRecorder
 	recorder, ok := c.Writer.(*httptest.ResponseRecorder)
 	assert.True(t, ok, "c.Writer must be a *httptest.ResponseRecorder in tests")
+	c.WriteResponse(resp)
 	assert.Equal(t, http.StatusNoContent, recorder.Code)
+	assert.Empty(t, recorder.Body.String())
 }
 
 func TestCORS_CustomConfig_SpecificOriginAllowed(t *testing.T) {

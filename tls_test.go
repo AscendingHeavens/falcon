@@ -8,60 +8,69 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// mockListenAndServeTLS replaces the real TLS startup for the duration of a test.
+func mockListenAndServeTLS(t *testing.T, mock func(*http.Server, string, string) error) {
+	t.Helper()
+	original := listenAndServeTLS
+	listenAndServeTLS = mock
+	t.Cleanup(func() { listenAndServeTLS = original })
+}
+
 func TestStartTLS_CallsListenAndServeTLS(t *testing.T) {
-	called := false
-	var addr, cert, key string
-
-	// mock ListenAndServeTLS
-	listenAndServeTLS = func(a, c, k string, h http.Handler) error {
-		called = true
-		addr = a
-		cert = c
-		key = k
+	var gotServer *http.Server
+	var cert, key string
+	mockListenAndServeTLS(t, func(srv *http.Server, c, k string) error {
+		gotServer, cert, key = srv, c, k
 		return nil
-	}
+	})
 
-	// logFatal should not be called
-	logFatal = func(v ...interface{}) {}
+	srv := New()
+	err := srv.StartTLS("127.0.0.1:8443", "cert.pem", "key.pem")
 
-	srv := &Server{}
-	srv.StartTLS("127.0.0.1:8443", "cert.pem", "key.pem")
-
-	assert.True(t, called)
-	assert.Equal(t, "127.0.0.1:8443", addr)
+	assert.NoError(t, err)
+	assert.Equal(t, "127.0.0.1:8443", gotServer.Addr)
+	assert.Equal(t, srv, gotServer.Handler)
 	assert.Equal(t, "cert.pem", cert)
 	assert.Equal(t, "key.pem", key)
+	assert.Equal(t, defaultTimeouts.ReadHeader, gotServer.ReadHeaderTimeout)
 }
 
-func TestStartTLS_ListenAndServeTLSError(t *testing.T) {
-	// simulate error
-	listenAndServeTLS = func(_, _, _ string, _ http.Handler) error {
-		return errors.New("tls error")
-	}
+func TestStartTLS_ReturnsTheError(t *testing.T) {
+	tlsErr := errors.New("tls error")
+	mockListenAndServeTLS(t, func(*http.Server, string, string) error { return tlsErr })
 
-	called := false
-	logFatal = func(v ...any) {
-		called = true
-		assert.Contains(t, v[0].(error).Error(), "tls error")
-	}
-
-	srv := &Server{}
-	srv.StartTLS("127.0.0.1:8443", "cert.pem", "key.pem")
-	assert.True(t, called)
+	assert.ErrorIs(t, New().StartTLS("127.0.0.1:8443", "cert.pem", "key.pem"), tlsErr)
 }
 
-func TestStartAutoTLS_CallsListenAndServeTLS(t *testing.T) {
-	called := false
-	logFatal = func(_ ...any) {
-		called = true
-	}
+func TestStartTLS_ShutdownIsNotAnError(t *testing.T) {
+	mockListenAndServeTLS(t, func(*http.Server, string, string) error { return http.ErrServerClosed })
 
-	srv := &Server{}
-	go func() {
-		// run in goroutine to avoid blocking
-		srv.StartAutoTLS("example.com")
-	}()
+	assert.NoError(t, New().StartTLS("127.0.0.1:8443", "cert.pem", "key.pem"))
+}
 
-	// minimal check: logFatal called (we can't run full TLS in unit test)
-	assert.True(t, called || true)
+type mockStarter struct {
+	server *http.Server
+	err    error
+}
+
+func (m *mockStarter) startTLSServer(srv *http.Server) error {
+	m.server = srv
+	return m.err
+}
+
+func TestStartAutoTLS_ConfiguresTheServer(t *testing.T) {
+	starter := &mockStarter{}
+
+	err := New().StartAutoTLSWithStarter("example.com", starter)
+
+	assert.NoError(t, err)
+	assert.Equal(t, ":443", starter.server.Addr)
+	assert.NotNil(t, starter.server.TLSConfig.GetCertificate)
+	assert.Equal(t, defaultTimeouts.Write, starter.server.WriteTimeout)
+}
+
+func TestStartAutoTLS_ReturnsTheError(t *testing.T) {
+	starter := &mockStarter{err: errors.New("tls error")}
+
+	assert.ErrorIs(t, New().StartAutoTLSWithStarter("example.com", starter), starter.err)
 }

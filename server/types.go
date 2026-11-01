@@ -1,6 +1,7 @@
 package server
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
@@ -56,11 +57,61 @@ func (p Params) Get(name string) string {
 //   - Message: human-readable message describing the result.
 //   - Details: optional field containing extra data (any type).
 //   - Code: HTTP status code to be sent to the client. It's Required to have at least one Status code
+//
+// A Response only describes what to send: the server writes it once the handler and
+// all middleware have returned, so middleware can still change it on the way out.
+// Anything other than this JSON shape (HTML, files, redirects...) can only come from
+// the helpers on Context, such as c.HTML or c.File, because raw can't be set from outside.
 type Response struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 	Details any    `json:"details,omitempty"`
 	Code    int    `json:"code"` // required
+
+	raw *rawBody // nil means the JSON envelope above
+}
+
+// IsRaw reports whether the response is sent as something other than the JSON envelope.
+func (r *Response) IsRaw() bool {
+	return r.raw != nil
+}
+
+// ContentType returns the content type of a raw response. It's "" for the JSON
+// envelope, and for raw responses without a body or whose type comes from a file.
+func (r *Response) ContentType() string {
+	if r.raw == nil {
+		return ""
+	}
+	return r.raw.contentType
+}
+
+// rawBody is what a raw response sends. At most one of data, reader and file is set;
+// if none are, the response has no body.
+type rawBody struct {
+	contentType string
+	data        []byte
+	reader      io.Reader
+	file        string
+	location    string // The Location header of a redirect
+}
+
+// Settings holds the server-wide options the Context needs while handling a request.
+type Settings struct {
+	Debug           bool                      // Show error details to clients
+	ErrorMapper     func(err error) *Response // Turns application errors into responses, or returns nil to pass
+	BodyLimit       int64                     // Maximum size of a request body, in bytes
+	MultipartMemory int64                     // Maximum bytes of a multipart form kept in memory, the rest goes to disk
+}
+
+// defaultSettings applies to a Context that wasn't created by a server.
+var defaultSettings = Settings{
+	BodyLimit:       10 << 20, // 10MB
+	MultipartMemory: 32 << 20, // 32MB
+}
+
+// DefaultSettings returns the settings a server starts with.
+func DefaultSettings() Settings {
+	return defaultSettings
 }
 
 // Context wraps http.ResponseWriter and *http.Request, providing
@@ -76,10 +127,17 @@ type Context struct {
 	Writer  http.ResponseWriter
 	Request *http.Request
 	Params  Params
+	// Handled means the handler took over the Writer itself (websockets, server-sent
+	// events...), so the server must not write anything. Helpers like c.JSON don't set it.
 	Handled bool
 	// Templates *TemplateRenderer To be added
 	Validator *validator.Validate
 	Values    map[string]any
+
+	settings *Settings
+	stream   io.Closer // The reader passed to c.Stream, closed once the response is written
+
+	bodyLimited bool // Whether the request body already has the size limit applied
 }
 
 // HandlerFunc defines the signature for all route handlers in Falcon.

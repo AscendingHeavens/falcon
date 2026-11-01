@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"runtime"
 	"runtime/debug"
-	"strings"
 	"time"
 
 	"github.com/ascendingheavens/falcon/server"
@@ -24,35 +23,41 @@ func Logger() Middleware {
 			start := time.Now()
 			resp := next(c)
 			duration := time.Since(start)
-			log.Printf("[%s] %s %s %d (%v)", time.Now().Format(time.RFC3339), c.Request.Method, c.Request.URL.Path, resp.Code, duration)
+			// The path is quoted because it comes from the client, and a newline in it could forge a log entry.
+			log.Printf("[%s] %s %q %d (%v)", time.Now().Format(time.RFC3339), c.Request.Method, c.Request.URL.Path, statusOf(resp), duration)
 			return resp
 		}
 	}
 }
 
+// statusOf returns the status a response will be sent with. A nil
+// Response from a middleware further in is sent as a 500.
+func statusOf(resp *server.Response) int {
+	if resp == nil {
+		return http.StatusInternalServerError
+	}
+	return resp.Code
+}
+
 // Panic Recovery
-// Recovery returns a middleware that recovers from panics and writes a 500 response.
+// Recovery returns a middleware that recovers from panics and responds with a 500.
+// The panic and its stack trace are always logged, but the client only sees the panic
+// message in debug mode. http.ErrAbortHandler passes through, because it's how a handler
+// deliberately aborts a connection.
 func Recovery() Middleware {
 	return func(next server.HandlerFunc) server.HandlerFunc {
 		return func(c *server.Context) (resp *server.Response) {
 			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("Recovered panic: %v\n%s", r, string(debug.Stack()))
-
-					if !c.Handled {
-						accept := c.Request.Header.Get("Accept")
-						if strings.Contains(accept, "text/html") {
-							resp = c.HTML(http.StatusInternalServerError, "<h1>500 Internal Server Error</h1>")
-						} else {
-							resp = c.JSON(
-								false,
-								"Internal Server Error",
-								fmt.Sprintf("%v", r),
-								http.StatusInternalServerError,
-							)
-						}
-					}
+				r := recover()
+				if r == nil {
+					return
 				}
+				if r == http.ErrAbortHandler {
+					panic(r)
+				}
+
+				log.Printf("Recovered panic: %v\n%s", r, string(debug.Stack()))
+				resp = c.Error(fmt.Errorf("panic: %v", r))
 			}()
 
 			return next(c)
@@ -60,7 +65,8 @@ func Recovery() Middleware {
 	}
 }
 
-// ProfilingMiddleware logs detailed timing info including handler execution and memory usage
+// ProfilingMiddleware logs detailed timing info including handler execution and memory usage.
+// Reading memory stats briefly stops the whole program, so use it for development only.
 func ProfilingMiddleware() Middleware {
 	return func(next server.HandlerFunc) server.HandlerFunc {
 		return func(c *server.Context) *server.Response {
@@ -77,9 +83,9 @@ func ProfilingMiddleware() Middleware {
 			runtime.ReadMemStats(&memStats)
 
 			log.Printf(
-				"[PROFILE] Route: %s | Status: %d | Time: %v | Alloc: %dKB | Sys: %dKB | NumGC: %d",
+				"[PROFILE] Route: %q | Status: %d | Time: %v | Alloc: %dKB | Sys: %dKB | NumGC: %d",
 				c.Request.URL.Path,
-				resp.Code,
+				statusOf(resp),
 				elapsed,
 				memStats.Alloc/1024,
 				memStats.Sys/1024,

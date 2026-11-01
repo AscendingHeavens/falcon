@@ -53,9 +53,7 @@ func (s *Server) methodNotAllowedHandler(c *server.Context) *server.Response {
 // autoOptionsHandler answers OPTIONS on a path that has routes but no OPTIONS route of its own.
 func (s *Server) autoOptionsHandler(c *server.Context) *server.Response {
 	c.Writer.Header().Set("Allow", strings.Join(s.router.AllowedMethods(c.Request.URL.Path), ", "))
-	c.Writer.WriteHeader(http.StatusNoContent)
-	c.Handled = true
-	return &server.Response{Success: true, Message: "OK", Code: http.StatusNoContent}
+	return c.NoContent()
 }
 
 // slashRedirectHandler redirects to the same path with its trailing slash added or removed.
@@ -90,3 +88,6 @@ type headWriter struct {
 }
 
 func (w headWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+// Unwrap lets http.ResponseController reach the underlying writer.
+func (w headWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }

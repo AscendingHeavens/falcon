@@ -104,6 +104,11 @@ func (c *Context) Get(key string) any {
 	return c.Values[key]
 }
 
+// NewContext creates a Context for a server to pool, with room for a typical number of params.
+func NewContext(settings *Settings) *Context {
+	return &Context{Params: make(Params, 0, 8), settings: settings}
+}
+
 // Reset prepares a pooled Context for a new request, keeping the Params capacity
 // so that later requests don't allocate. Passing nil clears it for return to the pool.
 func (c *Context) Reset(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +118,8 @@ func (c *Context) Reset(w http.ResponseWriter, r *http.Request) {
 	c.Handled = false
 	c.Validator = nil
 	c.Values = nil
+	c.stream = nil
+	c.bodyLimited = false
 }
 
 // Copy returns a Context that stays valid after the handler returns, for use in goroutines:
@@ -131,6 +138,7 @@ func (c *Context) Copy() *Context {
 		Handled:   true,
 		Validator: c.Validator,
 		Values:    maps.Clone(c.Values),
+		settings:  c.settings,
 	}
 }
 

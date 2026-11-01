@@ -12,32 +12,20 @@ import (
 	"strings"
 )
 
-// writeResponse writes a response with the given status code, content type, and body.
-// It ensures that a response is only written once per request.
-func (c *Context) writeResponse(code int, contentType string, body []byte) {
-	if c.Handled {
+// limitBody applies the server's body limit to the request, once. Everything that reads
+// the body goes through it, so that no route can read an unlimited amount from a client.
+func (c *Context) limitBody() {
+	if c.bodyLimited || c.Request.Body == nil {
 		return
 	}
-	c.Writer.Header().Set("Content-Type", contentType)
-	c.Writer.WriteHeader(code)
-	_, _ = c.Writer.Write(body)
-	c.Handled = true
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, c.config().BodyLimit)
+	c.bodyLimited = true
 }
 
-// writeErrorResponse writes a standardized JSON error response.
-// Parameters:
-//   - code: HTTP status code to return
-//   - message: human-readable message
-//   - err: underlying error detail
-func (c *Context) writeErrorResponse(code int, message string, err error) {
-	if c.Handled {
-		return
-	}
-
-	c.JSON(false,
-		message,
-		err.Error(),
-		code)
+// parseMultipart parses a multipart form within the server's limits.
+func (c *Context) parseMultipart() error {
+	c.limitBody()
+	return c.Request.ParseMultipartForm(c.config().MultipartMemory)
 }
 
 // shouldBindBody reads and unmarshals the request body into dest.
@@ -69,8 +57,8 @@ func (c *Context) shouldBindBody(dest any, expectedType string, unmarshal func([
 		return errors.New("request body is empty")
 	}
 
-	limitedReader := http.MaxBytesReader(c.Writer, c.Request.Body, maxBodySize)
-	body, err := io.ReadAll(limitedReader)
+	c.limitBody()
+	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read request body: %w", err)
 	}

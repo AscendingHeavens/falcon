@@ -8,56 +8,48 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
-// listenAndServeTLS is a package-level variable that wraps http.ListenAndServeTLS
+// listenAndServeTLS is a package-level variable that wraps http.Server.ListenAndServeTLS
 // for dependency injection during testing. This allows tests to mock the TLS
 // server startup without actually starting a real server.
-var listenAndServeTLS = func(addr, certFile, keyFile string, h http.Handler) error {
-	return http.ListenAndServeTLS(addr, certFile, keyFile, h)
-}
-
-// logFatal is a package-level variable that wraps log.Fatal for dependency
-// injection during testing. This allows tests to capture fatal errors without
-// actually terminating the test process.
-var logFatal = func(v ...interface{}) {
-	log.Fatal(v...)
+var listenAndServeTLS = func(srv *http.Server, certFile, keyFile string) error {
+	return srv.ListenAndServeTLS(certFile, keyFile)
 }
 
 // StartTLS starts the server with TLS using the provided certificate and key files.
 // The server will bind to the specified address and serve HTTPS traffic.
+// It blocks until the server stops, returning nil after a Shutdown and otherwise
+// the error that stopped it.
 //
 // Parameters:
 //   - addr: The address to bind to (e.g., ":443", "localhost:8443")
 //   - certFile: Path to the TLS certificate file
 //   - keyFile: Path to the TLS private key file
 //
-// This method will call log.Fatal if the server fails to start, terminating
-// the program. Use this for production deployments where server startup
-// failure should halt the application.
-//
 // Example:
 //
-//	server := &Server{}
-//	server.StartTLS(":443", "/path/to/cert.pem", "/path/to/key.pem")
-func (s *Server) StartTLS(addr, certFile, keyFile string) {
+//	app := falcon.New()
+//	if err := app.StartTLS(":443", "/path/to/cert.pem", "/path/to/key.pem"); err != nil {
+//		log.Fatal(err)
+//	}
+func (s *Server) StartTLS(addr, certFile, keyFile string) error {
 	log.Printf("Starting server with TLS on %s", addr)
-	if err := listenAndServeTLS(addr, certFile, keyFile, s); err != nil {
-		logFatal(err)
-	}
+	return ignoreClosed(listenAndServeTLS(s.newHTTPServer(addr), certFile, keyFile))
 }
 
 // startTLSServer starts an HTTP server with TLS using the provided server configuration.
 // This is an internal method that implements the TLSStarter interface, allowing
 // the Server to start itself when used with StartAutoTLSWithStarter.
 //
-// This method assumes the server is already configured with TLS settings and
-// will call log.Fatal if the server fails to start.
-func (s *Server) startTLSServer(server *http.Server) {
-	logFatal(server.ListenAndServeTLS("", ""))
+// This method assumes the server is already configured with TLS settings.
+func (s *Server) startTLSServer(server *http.Server) error {
+	return server.ListenAndServeTLS("", "")
 }
 
 // StartAutoTLS starts the server with automatic TLS certificate management using Let's Encrypt.
 // This method automatically obtains and renews TLS certificates for the specified domain
 // using the ACME protocol. The server will bind to port 443.
+// It blocks until the server stops, returning nil after a Shutdown and otherwise
+// the error that stopped it.
 //
 // Parameters:
 //   - domain: The domain name for which to obtain certificates (e.g., "example.com")
@@ -73,16 +65,14 @@ func (s *Server) startTLSServer(server *http.Server) {
 //   - The domain must point to the server's IP address
 //   - Port 80 should also be available for ACME challenges (handled automatically by autocert)
 //
-// This method will call log.Fatal if the server fails to start, terminating
-// the program. Use this for production deployments where server startup
-// failure should halt the application.
-//
 // Example:
 //
-//	server := &Server{}
-//	server.StartAutoTLS("example.com") // Will serve HTTPS on port 443
-func (s *Server) StartAutoTLS(domain string) {
-	s.StartAutoTLSWithStarter(domain, s)
+//	app := falcon.New()
+//	if err := app.StartAutoTLS("example.com"); err != nil { // Will serve HTTPS on port 443
+//		log.Fatal(err)
+//	}
+func (s *Server) StartAutoTLS(domain string) error {
+	return s.StartAutoTLSWithStarter(domain, s)
 }
 
 // StartAutoTLSWithStarter starts the server with automatic TLS certificate management
@@ -106,22 +96,19 @@ func (s *Server) StartAutoTLS(domain string) {
 //
 // Example:
 //
-//	server := &Server{}
+//	app := falcon.New()
 //	mockStarter := &MockTLSStarter{...}
-//	server.StartAutoTLSWithStarter("example.com", mockStarter)
-func (s *Server) StartAutoTLSWithStarter(domain string, starter TLSStarter) {
+//	err := app.StartAutoTLSWithStarter("example.com", mockStarter)
+func (s *Server) StartAutoTLSWithStarter(domain string, starter TLSStarter) error {
 	manager := &autocert.Manager{
 		Cache:      autocert.DirCache("certs"),
 		Prompt:     autocert.AcceptTOS,
 		HostPolicy: autocert.HostWhitelist(domain),
 	}
 
-	server := &http.Server{
-		Addr:      ":443",
-		Handler:   s,
-		TLSConfig: &tls.Config{GetCertificate: manager.GetCertificate},
-	}
+	server := s.newHTTPServer(":443")
+	server.TLSConfig = &tls.Config{GetCertificate: manager.GetCertificate}
 
 	log.Printf("Starting server with AutoTLS on %s", domain)
-	starter.startTLSServer(server)
+	return ignoreClosed(starter.startTLSServer(server))
 }

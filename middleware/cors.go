@@ -107,9 +107,7 @@ func CORSWithConfig(cfg CORSConfig) Middleware {
 				header.Set("Access-Control-Allow-Methods", allowMethods)
 				header.Set("Access-Control-Allow-Headers", allowHeaders)
 			}
-			c.Writer.WriteHeader(http.StatusNoContent)
-			c.Handled = true
-			return &server.Response{Success: true, Message: "CORS preflight", Code: http.StatusNoContent}
+			return c.NoContent()
 		}
 	}
 }

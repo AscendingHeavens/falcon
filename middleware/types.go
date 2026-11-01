@@ -1,7 +1,10 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/ascendingheavens/falcon/server"
@@ -12,12 +15,49 @@ import (
 // Examples include logging, authentication, profiling, or panic recovery.
 type Middleware func(server.HandlerFunc) server.HandlerFunc
 
-// ConditionalMiddleware pairs a middleware with a path pattern.
-// The middleware is only applied if the request path matches the pattern.
-// Patterns can include a wildcard '*' at the end to match any subpath.
+// ConditionalMiddleware pairs a middleware with path patterns, which decide the routes it
+// applies to. Patterns are compared with a route's path as registered, one segment at a time:
+//   - "/api/*" matches "/api", "/api/users" and "/api/users/:id", but not "/apiary";
+//   - "/*" matches every route;
+//   - "/users/:id" with no wildcard matches only the route with exactly that path.
 type ConditionalMiddleware struct {
-	Pattern    string     // The URL path pattern to match, e.g., "/api/v1/*"
-	Middleware Middleware // The middleware function to apply when the pattern matches
+	Patterns   []string   // The path patterns to match, e.g., "/api/v1/*"
+	Negate     bool       // Apply the middleware to routes matching none of the patterns instead
+	Middleware Middleware // The middleware function to apply
+}
+
+// NewConditionalMiddleware creates a ConditionalMiddleware. It panics on patterns that
+// couldn't match what they appear to mean, so the mistake shows up at startup.
+func NewConditionalMiddleware(mw Middleware, negate bool, patterns []string) ConditionalMiddleware {
+	if len(patterns) == 0 {
+		panic("falcon: conditional middleware needs at least one path pattern")
+	}
+	for _, p := range patterns {
+		if !strings.HasPrefix(p, "/") {
+			panic(fmt.Sprintf("falcon: middleware pattern %q must start with \"/\"", p))
+		}
+		if strings.HasSuffix(p, "*") && !strings.HasSuffix(p, "/*") {
+			panic(fmt.Sprintf("falcon: middleware pattern %q matches whole segments only; did you mean %q?",
+				p, strings.TrimSuffix(p, "*")+"/*"))
+		}
+	}
+	return ConditionalMiddleware{Patterns: patterns, Negate: negate, Middleware: mw}
+}
+
+// AppliesTo reports whether the middleware should wrap the route with this path.
+func (cm ConditionalMiddleware) AppliesTo(routePath string) bool {
+	return slices.ContainsFunc(cm.Patterns, func(p string) bool {
+		return patternMatches(p, routePath)
+	}) != cm.Negate
+}
+
+// patternMatches compares a pattern with a route's path, by whole segments.
+func patternMatches(pattern, routePath string) bool {
+	base, wildcard := strings.CutSuffix(pattern, "/*")
+	if !wildcard {
+		return pattern == routePath
+	}
+	return routePath == base || strings.HasPrefix(routePath, base+"/")
 }
 
 // CORSConfig defines configuration for Cross-Origin Resource Sharing (CORS).
