@@ -5,6 +5,7 @@
 package bench
 
 import (
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,14 +15,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 )
-
-// envelope mirrors falcon.Response, so all three frameworks encode the same JSON.
-type envelope struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Details any    `json:"details,omitempty"`
-	Code    int    `json:"code"`
-}
 
 type user struct {
 	ID    int    `json:"id"`
@@ -250,8 +243,90 @@ func BenchmarkJSON(b *testing.B) {
 	}
 }
 
+// nullWriter throws away what's written to it. The standard logger can't use io.Discard
+// here: it recognises that writer and skips formatting the line, which would make Falcon
+// look faster than it is, because Gin and Echo format theirs before discarding them.
+type nullWriter struct{}
+
+func (nullWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+// discardLogs silences the standard logger, which Falcon's Logger writes to.
+func discardLogs(tb testing.TB) {
+	tb.Helper()
+	original := log.Writer()
+	log.SetOutput(nullWriter{})
+	tb.Cleanup(func() { log.SetOutput(original) })
+}
+
+// A realistic request, through everything a real API would have. See realisticApps.
+func BenchmarkRealistic(b *testing.B) {
+	discardLogs(b)
+	req := []*http.Request{httptest.NewRequest("GET", issuesTarget, nil)}
+	for _, app := range realisticApps {
+		b.Run(app.name, func(b *testing.B) {
+			run(b, app.build(true), req)
+		})
+	}
+}
+
+// The same request without logging, because each framework logs a different amount.
+func BenchmarkRealisticNoLogging(b *testing.B) {
+	req := []*http.Request{httptest.NewRequest("GET", issuesTarget, nil)}
+	for _, app := range realisticApps {
+		b.Run(app.name, func(b *testing.B) {
+			run(b, app.build(false), req)
+		})
+	}
+}
+
+// Reading two query values, with no middleware and no response body.
+func BenchmarkQuery(b *testing.B) {
+	route := []route{{"GET", "/search"}}
+	req := []*http.Request{httptest.NewRequest("GET", "/search?q=falcon&page=2", nil)}
+
+	b.Run("falcon", func(b *testing.B) {
+		run(b, newFalcon(route, func(c *falcon.Context) *falcon.Response {
+			paramSink = c.Query("q")
+			paramSink = c.Query("page")
+			c.Handled = true
+			return handledResponse
+		}), req)
+	})
+	b.Run("gin", func(b *testing.B) {
+		run(b, newGin(route, func(c *gin.Context) {
+			paramSink = c.Query("q")
+			paramSink = c.Query("page")
+		}), req)
+	})
+	b.Run("echo", func(b *testing.B) {
+		run(b, newEcho(route, func(c echo.Context) error {
+			paramSink = c.QueryParam("q")
+			paramSink = c.QueryParam("page")
+			return nil
+		}), req)
+	})
+}
+
 // The tests below check the benchmarks measure what they claim to. A benchmark
 // that silently hits a 404 or encodes a different body would make the numbers meaningless.
+
+func TestRealisticAppsDoTheSameWork(t *testing.T) {
+	discardLogs(t)
+	want := `{"success":true,"message":"Issue found","details":{"number":"42","state":"open","page":"2"},"code":200}`
+
+	for _, app := range realisticApps {
+		for _, logging := range []bool{true, false} {
+			t.Run(app.name, func(t *testing.T) {
+				w := newDiscardWriter()
+				w.keep = true
+				app.build(logging).ServeHTTP(w, httptest.NewRequest("GET", issuesTarget, nil))
+
+				assert.Equal(t, 200, w.status)
+				assert.JSONEq(t, want, string(w.body))
+			})
+		}
+	}
+}
 
 func TestEveryGitHubRouteMatches(t *testing.T) {
 	t.Logf("%d routes", len(githubRoutes))

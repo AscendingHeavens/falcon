@@ -119,7 +119,16 @@ func (c *Context) Query(key string) string {
 	if c.Request == nil {
 		return ""
 	}
-	return c.Request.URL.Query().Get(key)
+	return c.queryValues().Get(key)
+}
+
+// queryValues returns the parsed query string. It's parsed at most once per request,
+// so changing the request's RawQuery after reading a query value has no effect.
+func (c *Context) queryValues() url.Values {
+	if c.query == nil && c.Request.URL.RawQuery != "" {
+		c.query = c.Request.URL.Query()
+	}
+	return c.query
 }
 
 // QueryArray returns all values for a query parameter key.
@@ -128,8 +137,7 @@ func (c *Context) QueryArray(key string) []string {
 	if c.Request == nil {
 		return nil
 	}
-	values, _ := url.ParseQuery(c.Request.URL.RawQuery)
-	return values[key]
+	return c.queryValues()[key]
 }
 
 // FormFile retrieves the file from a multipart form.

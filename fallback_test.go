@@ -501,6 +501,35 @@ func TestPool_RequestsDoNotSeeEachOthersData(t *testing.T) {
 	assert.Equal(t, map[string]any{"secret": nil, "param": "", "handled": false}, resp.Details)
 }
 
+func TestPool_RequestsDoNotSeeEachOthersQuery(t *testing.T) {
+	s := New()
+	s.GET("/search", func(c *Context) *Response {
+		return c.OK(c.Query("q"), nil)
+	})
+
+	assert.Equal(t, "first", decode(t, do(s, "GET", "/search?q=first")).Message)
+	assert.Equal(t, "second", decode(t, do(s, "GET", "/search?q=second")).Message)
+	assert.Equal(t, "", decode(t, do(s, "GET", "/search")).Message)
+}
+
+func TestPool_CopyReadsTheQueryAfterTheRequest(t *testing.T) {
+	var copied *Context
+	s := New()
+	s.GET("/search", func(c *Context) *Response {
+		c.Query("q") // Fills the cache on the original, which gets cleared
+		copied = c.Copy()
+		return ok(c)
+	})
+	s.GET("/other", func(c *Context) *Response {
+		return c.OK(c.Query("q"), nil)
+	})
+
+	do(s, "GET", "/search?q=kept")
+	do(s, "GET", "/other?q=other") // Reuses the pooled Context
+
+	assert.Equal(t, "kept", copied.Query("q"))
+}
+
 func TestPool_PanicDoesNotPoisonLaterRequests(t *testing.T) {
 	s := New()
 	s.GET("/boom/:id", func(c *Context) *Response {

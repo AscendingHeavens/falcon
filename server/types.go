@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/go-playground/validator/v10"
 )
@@ -141,6 +142,8 @@ type Context struct {
 	stream   io.Closer // The reader passed to c.Stream, closed once the response is written
 
 	bodyLimited bool // Whether the request body already has the size limit applied
+
+	query url.Values // The parsed query string, once something has asked for it
 }
 
 // HandlerFunc defines the signature for all route handlers in Falcon.

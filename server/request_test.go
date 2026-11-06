@@ -358,6 +358,61 @@ func TestShouldBindMultipart_ParseError(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestQuery_MatchesNetURL(t *testing.T) {
+	for _, rawQuery := range []string{
+		"",
+		"a=1",
+		"a=1&a=2&b=3",
+		"a=hello%20world&b=x+y",
+		"a=&b",
+		"a=1;b=2",
+		"a=%zz&b=2",
+		"=novalue&&&",
+	} {
+		t.Run(rawQuery, func(t *testing.T) {
+			c := &Context{Request: httptest.NewRequest(http.MethodGet, "/?"+rawQuery, nil)}
+			want := c.Request.URL.Query()
+
+			for _, key := range []string{"a", "b", "", "missing"} {
+				assert.Equal(t, want.Get(key), c.Query(key), key)
+				assert.Equal(t, want[key], c.QueryArray(key), key)
+			}
+		})
+	}
+}
+
+func TestQuery_ParsesOncePerRequest(t *testing.T) {
+	c := &Context{Request: httptest.NewRequest(http.MethodGet, "/?a=1&b=2", nil)}
+
+	assert.Equal(t, "1", c.Query("a"))
+
+	allocs := testing.AllocsPerRun(100, func() {
+		c.Query("a")
+		c.Query("b")
+		c.QueryArray("a")
+	})
+	assert.Zero(t, allocs, "later reads reuse the first parse")
+
+	t.Run("nothing is parsed when there's no query string", func(t *testing.T) {
+		empty := &Context{Request: httptest.NewRequest(http.MethodGet, "/", nil)}
+		assert.Zero(t, testing.AllocsPerRun(100, func() {
+			empty.query = nil // Otherwise only the first run could reveal a parse
+			empty.Query("a")
+		}))
+		assert.Nil(t, empty.QueryArray("a"))
+	})
+}
+
+func TestQuery_ResetForgetsThePreviousRequest(t *testing.T) {
+	c := NewContext(&defaultSettings)
+	c.Reset(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/?token=secret", nil))
+	assert.Equal(t, "secret", c.Query("token"))
+
+	c.Reset(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+
+	assert.Equal(t, "", c.Query("token"), "one request must never see another's query")
+}
+
 func TestParam_ReturnsValueOrEmpty(t *testing.T) {
 	c := &Context{Params: Params{{Key: "id", Value: "123"}}}
 	assert.Equal(t, "123", c.Param("id"))

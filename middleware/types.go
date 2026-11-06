@@ -83,3 +83,15 @@ type CSRFConfig struct {
 	CookieHTTPOnly bool                                          // Whether the cookie is HttpOnly
 	CookieSameSite http.SameSite                                 // The cookie's SameSite mode. Defaults to Lax
 }
+
+// RateLimitConfig defines configuration for the rate limiting middleware.
+// Each client may make Limit requests every Per, and up to Burst of them at once.
+type RateLimitConfig struct {
+	Limit int           // Requests allowed in each Per, e.g. 100
+	Per   time.Duration // The period Limit applies to, e.g. time.Minute
+	Burst int           // Requests allowed at once. Defaults to Limit
+
+	// KeyFunc decides who counts as one client, such as by API key or user ID. Returning ""
+	// skips limiting for that request. Defaults to the IP address of the connection.
+	KeyFunc func(*server.Context) string
+}
