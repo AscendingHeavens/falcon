@@ -26,6 +26,7 @@ type DocEntry struct {
 }
 
 type Docs struct {
+	Packages  []DocEntry `json:"packages"` // Each package's overview, from its package comment
 	Types     []DocEntry `json:"types"`
 	Functions []DocEntry `json:"functions"`
 }
@@ -72,6 +73,9 @@ func parsePackage(path string, fsSet *token.FileSet) (*Docs, error) {
 	}
 
 	var docs Docs
+	if p.Doc != "" {
+		docs.Packages = append(docs.Packages, DocEntry{Name: pkg.Name, Doc: p.Doc})
+	}
 
 	// Types
 	for _, t := range p.Types {
@@ -131,8 +135,9 @@ func main() {
 			return nil
 		}
 
-		// Skip hidden directories
-		if d.Name() == ".git" || d.Name() == "node_modules" || d.Name() == "example" || d.Name() == "docs" {
+		// Skip everything that isn't part of Falcon's API
+		switch d.Name() {
+		case ".git", "node_modules", "example", "docs", "bench", "tools", "testdata":
 			return filepath.SkipDir
 		}
 
@@ -141,6 +146,7 @@ func main() {
 			return nil
 		}
 
+		finalDocs.Packages = append(finalDocs.Packages, pkgDocs.Packages...)
 		finalDocs.Types = append(finalDocs.Types, pkgDocs.Types...)
 		finalDocs.Functions = append(finalDocs.Functions, pkgDocs.Functions...)
 		return nil
