@@ -506,7 +506,7 @@ Falcon gets better with every report, so please [open an issue](https://github.c
 * **Performance:** benchmark results from your own machine, or a case where Falcon is slower than you'd expect.
 * **Documentation:** anything in this README that was unclear, wrong or missing.
 
-Security problems are the exception: please report them privately to the maintainers instead of in a public issue.
+Security problems are the exception: please [report them privately](https://github.com/AscendingHeavens/falcon/security/advisories/new) instead of in a public issue, so they can be fixed before they're widely known.
 
 ---
 
