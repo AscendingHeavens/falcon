@@ -368,14 +368,31 @@ func TestQuery_MatchesNetURL(t *testing.T) {
 		"a=1;b=2",
 		"a=%zz&b=2",
 		"=novalue&&&",
+		"a=%zz&a=2",         // A malformed value is skipped, so the next a counts
+		"%zz=1&a=2",         // So is a malformed key
+		"a;x=1&a=2",         // And a pair with a semicolon
+		"a%3D=1&b=x%26y",    // Escaped key and value
+		"a+b=c+d&a%20b=e",   // + and %20 are both spaces
+		"b=1&a=&a=2",        // An empty value is still the first value
+		"a&a=1",             // A key with no = has the value ""
+		"a=1&b=2&a=3&b=4",   // Only the first value of each
+		"=root&a=%E2%9C%93", // Empty key, and UTF-8
+		"&&=x",              // Empty pairs aren't an empty key
+		"a=%2",              // A truncated escape
+		strings.Repeat("x=1&", 150) + "a=late&b=2",   // Long enough to go through net/url
+		strings.Repeat("x=1&", 10000) + "a=late&b=2", // Past net/url's limit, where it parses nothing
 	} {
-		t.Run(rawQuery, func(t *testing.T) {
-			c := &Context{Request: httptest.NewRequest(http.MethodGet, "/?"+rawQuery, nil)}
-			want := c.Request.URL.Query()
+		t.Run(rawQuery[:min(len(rawQuery), 40)], func(t *testing.T) {
+			want := httptest.NewRequest(http.MethodGet, "/?"+rawQuery, nil).URL.Query()
 
-			for _, key := range []string{"a", "b", "", "missing"} {
-				assert.Equal(t, want.Get(key), c.Query(key), key)
-				assert.Equal(t, want[key], c.QueryArray(key), key)
+			for _, key := range []string{"a", "b", "", "a b", "a=", "x", "missing"} {
+				// A fresh Context for each, because QueryArray builds the map that Query
+				// then uses, and this must test Query reading the raw query itself.
+				fresh := func() *Context {
+					return &Context{Request: httptest.NewRequest(http.MethodGet, "/?"+rawQuery, nil)}
+				}
+				assert.Equal(t, want.Get(key), fresh().Query(key), "Query(%q)", key)
+				assert.Equal(t, want[key], fresh().QueryArray(key), "QueryArray(%q)", key)
 			}
 		})
 	}
@@ -392,6 +409,16 @@ func TestQuery_ParsesOncePerRequest(t *testing.T) {
 		c.QueryArray("a")
 	})
 	assert.Zero(t, allocs, "later reads reuse the first parse")
+
+	t.Run("reading a few values doesn't allocate", func(t *testing.T) {
+		fresh := &Context{Request: httptest.NewRequest(http.MethodGet, "/?state=open&page=2&q=falcon", nil)}
+		assert.Zero(t, testing.AllocsPerRun(100, func() {
+			fresh.Query("state")
+			fresh.Query("page")
+			fresh.Query("missing")
+		}))
+		assert.Nil(t, fresh.query, "no map was built")
+	})
 
 	t.Run("nothing is parsed when there's no query string", func(t *testing.T) {
 		empty := &Context{Request: httptest.NewRequest(http.MethodGet, "/", nil)}

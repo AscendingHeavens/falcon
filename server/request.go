@@ -119,7 +119,52 @@ func (c *Context) Query(key string) string {
 	if c.Request == nil {
 		return ""
 	}
-	return c.queryValues().Get(key)
+	if c.query != nil {
+		return c.query.Get(key)
+	}
+
+	// Long queries go through net/url itself, so its limit on how many parameters it
+	// will parse (set with GODEBUG=urlmaxqueryparams) applies exactly as it would.
+	raw := c.Request.URL.RawQuery
+	if strings.Count(raw, "&") >= maxScannedQueryParams {
+		return c.queryValues().Get(key)
+	}
+	return rawQueryParam(raw, key)
+}
+
+// maxScannedQueryParams is how many parameters Query looks through itself before leaving
+// the query to net/url. It's far below net/url's own default limit of 10,000.
+const maxScannedQueryParams = 100
+
+// rawQueryParam returns the first value of name in a raw query, exactly as url.ParseQuery
+// followed by Get would, but without building the map: reading a few parameters this way
+// doesn't allocate unless a value needs unescaping. Like ParseQuery, it skips pairs
+// containing a semicolon or a malformed escape, so a later pair with the same name counts.
+func rawQueryParam(query, name string) string {
+	for query != "" {
+		var pair string
+		pair, query, _ = strings.Cut(query, "&")
+		if pair == "" || strings.Contains(pair, ";") {
+			continue
+		}
+
+		key, value, _ := strings.Cut(pair, "=")
+		if key, err := unescapeQuery(key); err != nil || key != name {
+			continue
+		}
+		if value, err := unescapeQuery(value); err == nil {
+			return value
+		}
+	}
+	return ""
+}
+
+// unescapeQuery is url.QueryUnescape, skipping the work for the common case of nothing to unescape.
+func unescapeQuery(s string) (string, error) {
+	if !strings.ContainsAny(s, "%+") {
+		return s, nil
+	}
+	return url.QueryUnescape(s)
 }
 
 // queryValues returns the parsed query string. It's parsed at most once per request,
