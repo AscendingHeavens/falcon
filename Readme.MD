@@ -491,7 +491,10 @@ Each run is saved to `bench/results/benchmark_test_dd-mm-yyyy-hh-mm.txt`. If you
 
 ## Development
 
-The Makefile works the same on Windows, macOS and Linux. Every tool runs through `go run` at a pinned version, so only Go needs installing.
+The Makefile works the same on Windows, macOS and Linux. Every tool runs through `go run` at a pinned version, so you don't need to install any of them. You do need Go and `make`:
+
+- **Go**: install from [go.dev/dl](https://go.dev/dl).
+- **make**: already there on most Linux distributions and on macOS once the Xcode command line tools are installed (`xcode-select --install`). On Windows it isn't included, so install it with `choco install make`, `scoop install make` or `winget install GnuWin32.Make`, or use Git Bash or WSL. If you'd rather not install it, you can run the `go run` commands from the Makefile directly.
 
 | Command | Does |
 |---|---|
