@@ -77,7 +77,7 @@ func (c *Context) shouldBindBody(dest any, expectedType string, unmarshal func([
 // Returns an error if dest is not a pointer to struct or if any field fails to set.
 func (c *Context) bindFormToStruct(values url.Values, dest any) error {
 	rv := reflect.ValueOf(dest)
-	if rv.Kind() != reflect.Ptr || rv.Elem().Kind() != reflect.Struct {
+	if rv.Kind() != reflect.Pointer || rv.Elem().Kind() != reflect.Struct {
 		return errors.New("destination must be a pointer to struct")
 	}
 

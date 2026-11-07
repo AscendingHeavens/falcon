@@ -12,7 +12,7 @@ import (
 
 	"github.com/ascendingheavens/falcon"
 	"github.com/gin-gonic/gin"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -109,16 +109,16 @@ var frameworks = []framework{
 	{
 		name: "echo",
 		noop: func(routes []route) http.Handler {
-			return newEcho(routes, func(c echo.Context) error { return nil })
+			return newEcho(routes, func(c *echo.Context) error { return nil })
 		},
 		param: func(routes []route) http.Handler {
-			return newEcho(routes, func(c echo.Context) error {
+			return newEcho(routes, func(c *echo.Context) error {
 				paramSink = c.Param("id")
 				return nil
 			})
 		},
 		json: func(routes []route) http.Handler {
-			return newEcho(routes, func(c echo.Context) error {
+			return newEcho(routes, func(c *echo.Context) error {
 				return c.JSON(200, envelope{Success: true, Message: "User found", Details: benchUser, Code: 200})
 			})
 		},
@@ -299,7 +299,7 @@ func BenchmarkQuery(b *testing.B) {
 		}), req)
 	})
 	b.Run("echo", func(b *testing.B) {
-		run(b, newEcho(route, func(c echo.Context) error {
+		run(b, newEcho(route, func(c *echo.Context) error {
 			paramSink = c.QueryParam("q")
 			paramSink = c.QueryParam("page")
 			return nil

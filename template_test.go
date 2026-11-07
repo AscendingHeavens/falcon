@@ -82,7 +82,7 @@ func TestTemplates_OverARealServer(t *testing.T) {
 
 	resp, err := http.Get("http://" + addr + "/page")
 	if assert.NoError(t, err) {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
 		assert.Equal(t, 200, resp.StatusCode)
 		assert.Contains(t, string(body), "<h1>User real</h1>")
@@ -90,14 +90,14 @@ func TestTemplates_OverARealServer(t *testing.T) {
 
 	head, err := http.Head("http://" + addr + "/page")
 	if assert.NoError(t, err) {
-		head.Body.Close()
+		_ = head.Body.Close()
 		assert.Equal(t, 200, head.StatusCode)
 		assert.Equal(t, "text/html; charset=utf-8", head.Header.Get("Content-Type"))
 	}
 
 	failed, err := http.Get("http://" + addr + "/missing")
 	if assert.NoError(t, err) {
-		defer failed.Body.Close()
+		defer func() { _ = failed.Body.Close() }()
 		body, _ := io.ReadAll(failed.Body)
 		assert.Equal(t, 500, failed.StatusCode)
 		assert.JSONEq(t, `{"success":false,"message":"Internal Server Error","code":500}`, string(body))

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/doc"
 	"go/parser"
 	"go/printer"
@@ -42,57 +43,72 @@ func isExported(name string) bool {
 // convert an ast.Decl to Go code
 func snippetFromDecl(fs *token.FileSet, decl ast.Decl) string {
 	var buf bytes.Buffer
-	printer.Fprint(&buf, fs, decl)
+	if err := printer.Fprint(&buf, fs, decl); err != nil {
+		return ""
+	}
 	return buf.String()
 }
 
+// parsePackage documents the package in path. Its files are the ones the go command would
+// build, so build tags are respected and test files are left out.
 func parsePackage(path string, fsSet *token.FileSet) (*Docs, error) {
-	pkgs, err := parser.ParseDir(fsSet, path, nil, parser.ParseComments)
+	pkg, err := build.ImportDir(path, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	files := make([]*ast.File, 0, len(pkg.GoFiles))
+	for _, name := range pkg.GoFiles {
+		file, err := parser.ParseFile(fsSet, filepath.Join(path, name), nil, parser.ParseComments)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, file)
+	}
+
+	p, err := doc.NewFromFiles(fsSet, files, path)
 	if err != nil {
 		return nil, err
 	}
 
 	var docs Docs
-	for pkgName, pkg := range pkgs {
-		p := doc.New(pkg, path, 0)
 
-		// Types
-		for _, t := range p.Types {
-			if !isExported(t.Name) {
-				continue
-			}
-			entry := DocEntry{
-				Name:    t.Name,
-				Doc:     t.Doc,
-				Package: pkgName,
-				Code:    snippetFromDecl(fsSet, t.Decl),
-			}
-
-			for _, m := range t.Methods {
-				if !isExported(m.Name) || m.Doc == "" {
-					continue
-				}
-				entry.Methods = append(entry.Methods, DocEntry{
-					Name: m.Name,
-					Doc:  m.Doc,
-					Code: snippetFromDecl(fsSet, m.Decl),
-				})
-			}
-			docs.Types = append(docs.Types, entry)
+	// Types
+	for _, t := range p.Types {
+		if !isExported(t.Name) {
+			continue
+		}
+		entry := DocEntry{
+			Name:    t.Name,
+			Doc:     t.Doc,
+			Package: pkg.Name,
+			Code:    snippetFromDecl(fsSet, t.Decl),
 		}
 
-		// Functions
-		for _, f := range p.Funcs {
-			if !isExported(f.Name) || f.Doc == "" || (len(f.Name) >= 4 && f.Name[:4] == "Test") {
+		for _, m := range t.Methods {
+			if !isExported(m.Name) || m.Doc == "" {
 				continue
 			}
-			docs.Functions = append(docs.Functions, DocEntry{
-				Name:    f.Name,
-				Doc:     f.Doc,
-				Package: pkgName,
-				Code:    snippetFromDecl(fsSet, f.Decl),
+			entry.Methods = append(entry.Methods, DocEntry{
+				Name: m.Name,
+				Doc:  m.Doc,
+				Code: snippetFromDecl(fsSet, m.Decl),
 			})
 		}
+		docs.Types = append(docs.Types, entry)
+	}
+
+	// Functions
+	for _, f := range p.Funcs {
+		if !isExported(f.Name) || f.Doc == "" || (len(f.Name) >= 4 && f.Name[:4] == "Test") {
+			continue
+		}
+		docs.Functions = append(docs.Functions, DocEntry{
+			Name:    f.Name,
+			Doc:     f.Doc,
+			Package: pkg.Name,
+			Code:    snippetFromDecl(fsSet, f.Decl),
+		})
 	}
 
 	return &docs, nil

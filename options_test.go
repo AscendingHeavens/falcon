@@ -228,7 +228,7 @@ func freeAddr(t *testing.T) string {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	return l.Addr().String()
 }
 
@@ -241,7 +241,7 @@ func startServer(t *testing.T, s *Server, addr string) <-chan error {
 	for range 200 {
 		conn, err := net.Dial("tcp", addr)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return done
 		}
 		time.Sleep(5 * time.Millisecond)
@@ -253,7 +253,7 @@ func startServer(t *testing.T, s *Server, addr string) <-chan error {
 func TestStart_ReturnsAnErrorInsteadOfExiting(t *testing.T) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NoError(t, err)
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 
 	assert.Error(t, New().Start(l.Addr().String()), "the port is taken")
 }
@@ -278,7 +278,7 @@ func TestShutdown_WaitsForRequestsInProgress(t *testing.T) {
 			body <- err.Error()
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		data, _ := io.ReadAll(resp.Body)
 		body <- string(data)
 	}()
@@ -288,8 +288,8 @@ func TestShutdown_WaitsForRequestsInProgress(t *testing.T) {
 	go func() { shutdown <- s.Shutdown(context.Background()) }()
 
 	select {
-	case <-shutdown:
-		t.Fatal("Shutdown returned while a request was still running")
+	case err := <-shutdown:
+		t.Fatalf("Shutdown returned while a request was still running: %v", err)
 	case <-time.After(100 * time.Millisecond):
 	}
 
@@ -314,7 +314,7 @@ func TestShutdown_HonoursItsContext(t *testing.T) {
 	startServer(t, s, addr)
 	go func() {
 		if resp, err := http.Get("http://" + addr + "/stuck"); err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 	}()
 	<-started
@@ -354,7 +354,7 @@ func TestWriteTimeout_DoesNotCutOffStreams(t *testing.T) {
 
 	resp, err := http.Get("http://" + addr + "/stream")
 	if assert.NoError(t, err) {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		data, err := io.ReadAll(resp.Body)
 		assert.NoError(t, err)
 		assert.Equal(t, "all of it", string(data))

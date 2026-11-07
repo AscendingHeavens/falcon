@@ -189,7 +189,7 @@ func (c *Context) writeRaw(resp *Response) {
 func (c *Context) serveFile(path string) {
 	f, err := os.Open(path)
 	if err == nil {
-		defer f.Close()
+		defer func() { _ = f.Close() }() // Read-only, so closing can't lose data
 	}
 
 	var info os.FileInfo

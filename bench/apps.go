@@ -9,8 +9,8 @@ import (
 	"github.com/ascendingheavens/falcon"
 	falconmw "github.com/ascendingheavens/falcon/middleware"
 	"github.com/gin-gonic/gin"
-	"github.com/labstack/echo/v4"
-	echomw "github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	echomw "github.com/labstack/echo/v5/middleware"
 )
 
 // envelope mirrors falcon.Response, so all three frameworks encode the same JSON.
@@ -79,17 +79,17 @@ var realisticApps = []struct {
 				LogURIPath: true,
 				LogStatus:  true,
 				LogLatency: true,
-				LogValuesFunc: func(c echo.Context, v echomw.RequestLoggerValues) error {
+				LogValuesFunc: func(c *echo.Context, v echomw.RequestLoggerValues) error {
 					// It has no line of its own, so this writes the same one as Falcon's Logger.
-					_, err := fmt.Fprintf(io.Discard, "[%s] %s %q %d (%v)\n",
-						time.Now().Format(time.RFC3339), v.Method, v.URIPath, v.Status, v.Latency)
+					_, err := fmt.Fprintf(io.Discard, "%s %s %q %d (%v)\n",
+						time.Now().Format("2006/01/02 15:04:05"), v.Method, v.URIPath, v.Status, v.Latency)
 					return err
 				},
 			}))
 		}
 		app.Use(echomw.Recover())
 		for _, r := range githubRoutes {
-			app.Add(r.method, r.path, func(c echo.Context) error {
+			app.Add(r.method, r.path, func(c *echo.Context) error {
 				return c.JSON(200, envelope{
 					Success: true,
 					Message: "Issue found",

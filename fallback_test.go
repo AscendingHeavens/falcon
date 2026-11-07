@@ -397,7 +397,7 @@ func TestUploads_BodyLimitApplies(t *testing.T) {
 			if err != nil {
 				return c.Error(err)
 			}
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 			return c.OK("uploaded", header.Size)
 		})
 		return s

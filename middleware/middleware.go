@@ -16,7 +16,10 @@ var (
 	ErrCSRFInvalid = errors.New("invalid CSRF token")
 )
 
-// Logging
+// Logger returns a middleware that logs each request's method, path, status and duration
+// through the standard log package, which adds the date and time:
+//
+//	2026/11/07 13:54:30 GET "/users/42" 200 (182.4µs)
 func Logger() Middleware {
 	return func(next server.HandlerFunc) server.HandlerFunc {
 		return func(c *server.Context) *server.Response {
@@ -24,7 +27,7 @@ func Logger() Middleware {
 			resp := next(c)
 			duration := time.Since(start)
 			// The path is quoted because it comes from the client, and a newline in it could forge a log entry.
-			log.Printf("[%s] %s %q %d (%v)", time.Now().Format(time.RFC3339), c.Request.Method, c.Request.URL.Path, statusOf(resp), duration)
+			log.Printf("%s %q %d (%v)", c.Request.Method, c.Request.URL.Path, statusOf(resp), duration)
 			return resp
 		}
 	}
