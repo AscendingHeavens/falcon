@@ -20,7 +20,7 @@ Note: This repository was transferred to AscendingHeavens/falcon. Due to Go modu
 * **Mistakes show up at startup.** Conflicting routes and malformed patterns panic with a message naming the problem, before you serve a single request.
 * **Predictable middleware.** It runs in a fixed order and applies no matter where you register it.
 * **Safe defaults.** Request size limits, connection timeouts, CSRF and CORS that are secure out of the box, and rate limiting that can't be bypassed with a forged header.
-* **Fast.** Zero allocations when routing, about 2x faster JSON responses than Gin and Echo, and the least memory per request. See [Performance](#performance).
+* **Fast.** Zero allocations when routing and, in our benchmarks, about 2x faster JSON responses than Gin and Echo and the least memory per request. See [Performance](#performance).
 
 ---
 
@@ -444,8 +444,8 @@ A copy can't respond to the client: anything written to it is discarded.
 
 Each benchmark measures how much work the framework itself adds to a request. Two numbers matter:
 
-* **Time per request.** Divide one second by it to see how many requests a single CPU core could push through the framework alone. Falcon's 921 ns on a realistic request is about 1.1 million requests a second per core, against about 800,000 for Echo and 390,000 for Gin. Your database and business logic take most of a real request's time, so this doesn't mean your app gets 2.7x faster than with Gin. It means the framework is never your bottleneck, and the same servers handle more traffic.
-* **Memory allocations per request.** Every allocation is memory Go's garbage collector has to clean up later, which costs CPU time and can cause latency spikes under load. Falcon allocates 6 times per realistic request, against 10 for Echo and 22 for Gin. This number doesn't depend on your hardware, so it's the most reliable one to compare.
+* **Time per request.** This is how long the framework itself spends on a request. Dividing one second by it gives a theoretical ceiling for the framework's overhead alone: Falcon's 921 ns on a realistic request works out to about 1.1 million requests a second per core, against about 800,000 for Echo and 390,000 for Gin. That isn't a measurement of real throughput, which depends on your database, business logic and network, and those usually take most of a request's time. So it doesn't mean your app gets 2.7x faster than with Gin. Falcon introduces very little framework overhead, leaving more CPU capacity for application logic and concurrent requests, and lower framework overhead can potentially improve throughput and reduce CPU use under comparable workloads.
+* **Memory allocations per request.** Every allocation is memory Go's garbage collector has to clean up later, which costs CPU time and can cause latency spikes under load. Falcon allocates 6 times per realistic request, against 10 for Echo and 22 for Gin.
 
 **Zero allocations when routing** means finding the right handler creates no garbage at all, whether your app has 5 routes or 500.
 
@@ -456,7 +456,7 @@ Median of 5 runs. Lower is better.
 | Benchmark | What it measures | **Falcon** | Gin | Echo |
 |---|---|---|---|---|
 | Realistic request | 222 routes, logging, panic recovery, a path param, two query params and a JSON response: a typical API call | **921 ns**, 6 allocs | 2,583 ns, 22 allocs | 1,245 ns, 10 allocs |
-| Realistic request, no logging | The same, to compare the frameworks without their different log formats | **482 ns**, 3 allocs | 1,610 ns, 11 allocs | 715 ns, 5 allocs |
+| Realistic request, no logging | The same without logging, because Gin's default log line contains more than Falcon's and Echo's, which are set up to log the same fields | **482 ns**, 3 allocs | 1,610 ns, 11 allocs | 715 ns, 5 allocs |
 | JSON response | Encoding the same response body | **312 ns** | 715 ns | 639 ns |
 | Static route among 222 | Finding a fixed path like `/user/repos` in a large app | **25.4 ns** | 29.0 ns | 35.2 ns |
 | Param route among 222 | Finding a path with 3 params, like `/repos/:owner/:repo/issues/:number` | **37.4 ns** | 44.6 ns | 58.1 ns |
@@ -466,9 +466,18 @@ Median of 5 runs. Lower is better.
 | Long static path | An 85-character path, the hardest case for comparing paths | 23.3 ns | **21.3 ns** | 44.9 ns |
 | Two query params | Reading `?q=falcon&page=2` | 103 ns | 755 ns | **73 ns** |
 
-Falcon is faster on realistic requests, JSON and most routing, and uses the least memory per request. Gin is faster on very long paths and level on a single param route, and Echo is faster at reading query params on their own.
+In these benchmarks, Falcon is faster on realistic requests, JSON and most routing, and uses the least memory per request. Gin is faster on very long paths and level on a single param route, and Echo is faster at reading query params on their own.
 
-The numbers come from an AMD Ryzen 7 9700X on Windows with Go 1.27.3, Gin v1.12.0 and Echo v5.4.4. Absolute times depend on your hardware, but the comparison between frameworks and the allocation counts shouldn't change much. All three send identical JSON in these tests. The route set is modelled on the GitHub API route set from [go-http-routing-benchmark](https://github.com/julienschmidt/go-http-routing-benchmark), without its catch-all routes.
+### Methodology and disclaimer
+
+These benchmarks measure framework-level overhead under controlled conditions. They aren't intended to represent the performance of every application or production workload.
+
+* **Environment:** an AMD Ryzen 7 9700X on Windows, with Go 1.27.3, Gin v1.12.0 and Echo v5.4.4. Results may vary with hardware, operating system, Go version, configuration, middleware and workload.
+* **Equivalent work:** all three frameworks use the same route definitions and send the same response payloads, and tests check that they produce identical JSON. The handlers for the routing benchmarks do no work in any of the three, so that only routing is measured.
+* **Routes:** the route set is modelled on the GitHub API route set from [go-http-routing-benchmark](https://github.com/julienschmidt/go-http-routing-benchmark), without its catch-all routes.
+* **Allocation counts** depend only on the code, so they're the most reliable numbers to compare across machines.
+
+Falcon, Gin and Echo are independent software projects. This comparison is an independently conducted technical evaluation, and doesn't imply any affiliation with or endorsement by the maintainers of Gin or Echo.
 
 ### Run them yourself
 

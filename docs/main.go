@@ -14,15 +14,25 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"unicode"
 )
 
 type DocEntry struct {
-	Name    string     `json:"name"`
-	Doc     string     `json:"doc"`
-	Methods []DocEntry `json:"methods,omitempty"`
-	Package string     `json:"package,omitempty"`
-	Code    string     `json:"code,omitempty"` // <-- code snippet
+	Name     string     `json:"name"`
+	Doc      string     `json:"doc"`
+	Methods  []DocEntry `json:"methods,omitempty"`
+	Package  string     `json:"package,omitempty"`
+	Code     string     `json:"code,omitempty"`     // <-- code snippet
+	Examples []Example  `json:"examples,omitempty"` // From Example functions in the package's tests
+}
+
+// Example is a testable example. go test runs it and checks its output, so it can't go stale.
+type Example struct {
+	Name   string `json:"name,omitempty"` // The suffix of ExampleFoo_suffix, if any
+	Code   string `json:"code"`
+	Output string `json:"output,omitempty"`
 }
 
 type Docs struct {
@@ -41,25 +51,59 @@ func isExported(name string) bool {
 	return false
 }
 
+// gofmt prints code the way gofmt does: tabs to indent, spaces to align, so that
+// comments still line up once a website shows the tabs as spaces.
+var gofmt = &printer.Config{Mode: printer.UseSpaces | printer.TabIndent, Tabwidth: 8}
+
 // convert an ast.Decl to Go code
 func snippetFromDecl(fs *token.FileSet, decl ast.Decl) string {
 	var buf bytes.Buffer
-	if err := printer.Fprint(&buf, fs, decl); err != nil {
+	if err := gofmt.Fprint(&buf, fs, decl); err != nil {
 		return ""
 	}
 	return buf.String()
 }
 
+// examples converts go/doc's examples into the code a reader sees: the body of the
+// Example function, without the braces around it or the "// Output:" comment, since the
+// output is shown separately.
+func examples(fs *token.FileSet, list []*doc.Example) []Example {
+	var out []Example
+	for _, ex := range list {
+		var buf bytes.Buffer
+		if err := gofmt.Fprint(&buf, fs, &printer.CommentedNode{Node: ex.Code, Comments: ex.Comments}); err != nil {
+			continue
+		}
+
+		code := strings.TrimSpace(buf.String())
+		code = strings.TrimSuffix(strings.TrimPrefix(code, "{"), "}")
+
+		var lines []string
+		for _, line := range strings.Split(strings.Trim(code, "\n"), "\n") {
+			line = strings.TrimPrefix(line, "\t")
+			if strings.HasPrefix(line, "// Output:") || strings.HasPrefix(line, "// Unordered output:") {
+				break
+			}
+			lines = append(lines, line)
+		}
+
+		code = strings.TrimRight(strings.Join(lines, "\n"), "\n")
+		out = append(out, Example{Name: ex.Suffix, Code: code, Output: ex.Output})
+	}
+	return out
+}
+
 // parsePackage documents the package in path. Its files are the ones the go command would
-// build, so build tags are respected and test files are left out.
+// build, so build tags are respected. Test files only provide examples.
 func parsePackage(path string, fsSet *token.FileSet) (*Docs, error) {
 	pkg, err := build.ImportDir(path, 0)
 	if err != nil {
 		return nil, err
 	}
 
-	files := make([]*ast.File, 0, len(pkg.GoFiles))
-	for _, name := range pkg.GoFiles {
+	names := append(append(slices.Clone(pkg.GoFiles), pkg.TestGoFiles...), pkg.XTestGoFiles...)
+	files := make([]*ast.File, 0, len(names))
+	for _, name := range names {
 		file, err := parser.ParseFile(fsSet, filepath.Join(path, name), nil, parser.ParseComments)
 		if err != nil {
 			return nil, err
@@ -74,7 +118,7 @@ func parsePackage(path string, fsSet *token.FileSet) (*Docs, error) {
 
 	var docs Docs
 	if p.Doc != "" {
-		docs.Packages = append(docs.Packages, DocEntry{Name: pkg.Name, Doc: p.Doc})
+		docs.Packages = append(docs.Packages, DocEntry{Name: pkg.Name, Doc: p.Doc, Examples: examples(fsSet, p.Examples)})
 	}
 
 	// Types
@@ -83,10 +127,11 @@ func parsePackage(path string, fsSet *token.FileSet) (*Docs, error) {
 			continue
 		}
 		entry := DocEntry{
-			Name:    t.Name,
-			Doc:     t.Doc,
-			Package: pkg.Name,
-			Code:    snippetFromDecl(fsSet, t.Decl),
+			Name:     t.Name,
+			Doc:      t.Doc,
+			Package:  pkg.Name,
+			Code:     snippetFromDecl(fsSet, t.Decl),
+			Examples: examples(fsSet, t.Examples),
 		}
 
 		for _, m := range t.Methods {
@@ -94,9 +139,10 @@ func parsePackage(path string, fsSet *token.FileSet) (*Docs, error) {
 				continue
 			}
 			entry.Methods = append(entry.Methods, DocEntry{
-				Name: m.Name,
-				Doc:  m.Doc,
-				Code: snippetFromDecl(fsSet, m.Decl),
+				Name:     m.Name,
+				Doc:      m.Doc,
+				Code:     snippetFromDecl(fsSet, m.Decl),
+				Examples: examples(fsSet, m.Examples),
 			})
 		}
 		docs.Types = append(docs.Types, entry)
@@ -113,10 +159,11 @@ func parsePackage(path string, fsSet *token.FileSet) (*Docs, error) {
 			continue
 		}
 		docs.Functions = append(docs.Functions, DocEntry{
-			Name:    f.Name,
-			Doc:     f.Doc,
-			Package: pkg.Name,
-			Code:    snippetFromDecl(fsSet, f.Decl),
+			Name:     f.Name,
+			Doc:      f.Doc,
+			Package:  pkg.Name,
+			Code:     snippetFromDecl(fsSet, f.Decl),
+			Examples: examples(fsSet, f.Examples),
 		})
 	}
 
