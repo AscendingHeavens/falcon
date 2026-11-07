@@ -98,8 +98,13 @@ func parsePackage(path string, fsSet *token.FileSet) (*Docs, error) {
 		docs.Types = append(docs.Types, entry)
 	}
 
-	// Functions
-	for _, f := range p.Funcs {
+	// Functions. go/doc files a function that returns one of the package's types under
+	// that type, such as New under Server, so those are collected from the types too.
+	funcs := p.Funcs
+	for _, t := range p.Types {
+		funcs = append(funcs, t.Funcs...)
+	}
+	for _, f := range funcs {
 		if !isExported(f.Name) || f.Doc == "" || (len(f.Name) >= 4 && f.Name[:4] == "Test") {
 			continue
 		}

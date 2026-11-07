@@ -1,0 +1,20 @@
+{{template "layouts/base.html" .}}
+
+{{define "title"}}Contact{{end}}
+
+{{define "content"}}
+<h1>Contact us</h1>
+
+{{if .Errors}}
+<ul class="errors">
+  {{range .Errors}}<li>{{.Field}} {{.Message}}</li>{{end}}
+</ul>
+{{end}}
+
+<form method="post" action="/contact">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <label>Name <input name="name" value="{{.Form.Name}}"></label>
+  <label>Message <textarea name="message">{{.Form.Message}}</textarea></label>
+  <button>Send</button>
+</form>
+{{end}}

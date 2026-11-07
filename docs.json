@@ -13,6 +13,12 @@
       "code": "type Context = server.Context"
     },
     {
+      "name": "FieldError",
+      "doc": "FieldError is an alias to server.FieldError, one invalid field in a ValidationError.\n",
+      "package": "falcon",
+      "code": "type FieldError = server.FieldError"
+    },
+    {
       "name": "Group",
       "doc": "Group represents a collection of routes that share a common path prefix\nand middleware stack. Useful for organizing related endpoints like `/api/v1/*`.\n",
       "methods": [
@@ -28,7 +34,7 @@
         },
         {
           "name": "Handle",
-          "doc": "Handle registers a route for the group with a specific HTTP method and path.\nIt automatically prepends the group's prefix to the path and applies\nthe group's middleware stack in reverse order for correct execution.\n",
+          "doc": "Handle registers a route for the group with a specific HTTP method and path.\nIt automatically prepends the group's prefix to the path. The group's middleware\napplies to the route no matter whether it was added before or after.\n",
           "code": "func (g *Group) Handle(method, path string, handler HandlerFunc)"
         },
         {
@@ -56,6 +62,12 @@
       "code": "type Group struct {\n\t// Prefix is the base path for this group (e.g., \"/api/v1\").\n\tPrefix\tstring\n\n\t// Server is a reference back to the parent server, allowing\n\t// groups to register routes directly into the main router.\n\tServer\t*Server\n\n\t// Middlewares is a list of middleware that will be applied to\n\t// every route registered within this group, in addition to any\n\t// global or conditional middleware from the Server.\n\tMiddlewares\t[]middleware.Middleware\n}"
     },
     {
+      "name": "HTTPError",
+      "doc": "HTTPError is an alias to server.HTTPError, an error that knows which\nresponse it should become. Pass it to c.Error.\n",
+      "package": "falcon",
+      "code": "type HTTPError = server.HTTPError"
+    },
+    {
       "name": "Handler",
       "doc": "Handler is a common interface implemented by both Server and Group.\nIt provides methods for registering middleware and defining routes\nusing standard HTTP methods. This allows groups and servers to be\nused interchangeably when registering routes.\n",
       "package": "falcon",
@@ -72,6 +84,12 @@
       "doc": "Middleware is an alias to middleware.Middleware, representing a function\nthat wraps and modifies a HandlerFunc, similar to how middleware works\nin frameworks like Express or Fiber.\n",
       "package": "falcon",
       "code": "type Middleware = middleware.Middleware"
+    },
+    {
+      "name": "Option",
+      "doc": "Option configures a Server. Pass options to New.\nExample: app := falcon.New(falcon.WithDebug(), falcon.WithBodyLimit(1\u003c\u003c20))\n",
+      "package": "falcon",
+      "code": "type Option func(*Server)"
     },
     {
       "name": "Response",
@@ -100,7 +118,7 @@
         },
         {
           "name": "Handle",
-          "doc": "Handle registers a route with a specific HTTP method and path.\nGlobal middleware is automatically applied in reverse order (so execution order is correct).\n",
+          "doc": "Handle registers a route with a specific HTTP method and path.\nIt panics if the route conflicts with one that is already registered.\n",
           "code": "func (s *Server) Handle(method, path string, handler server.HandlerFunc)"
         },
         {
@@ -119,39 +137,49 @@
           "code": "func (s *Server) PUT(path string, handler server.HandlerFunc)"
         },
         {
-          "name": "ServeHTTP",
-          "doc": "ServeHTTP implements http.Handler, so Falcon Server can be passed\ndirectly to http.ListenAndServe. It finds the route, applies conditional middleware,\nexecutes the handler, and writes the Response as JSON.\n",
-          "code": "func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request)"
+          "name": "SetRenderer",
+          "doc": "SetRenderer sets the TemplateRenderer used by c.Render. Like middleware, it must be\nset before the first request. With WithDebug, templates reload on every render.\nExample:\n\n\trenderer, err := falcon.NewTemplateRenderer(\"views\", nil)\n\tif err != nil {\n\t\tlog.Fatal(err)\n\t}\n\tapp.SetRenderer(renderer)\n",
+          "code": "func (s *Server) SetRenderer(renderer *TemplateRenderer)"
+        },
+        {
+          "name": "Shutdown",
+          "doc": "Shutdown stops the server gracefully: it stops accepting connections and waits for\nthe requests in progress to finish, or for ctx to end, whichever comes first.\n\nExample:\n\n\tctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)\n\tdefer cancel()\n\terr := app.Shutdown(ctx)\n",
+          "code": "func (s *Server) Shutdown(ctx context.Context) error"
         },
         {
           "name": "Start",
-          "doc": "Start runs the HTTP server on the specified address. It logs the startup\nand will terminate the program if ListenAndServe returns an error.\n",
-          "code": "func (s *Server) Start(addr string)"
+          "doc": "Start runs the HTTP server on the specified address and blocks until it stops.\nIt returns nil after a Shutdown, and otherwise the error that stopped it.\n\nExample:\n\n\tif err := app.Start(\":8080\"); err != nil {\n\t\tlog.Fatal(err)\n\t}\n",
+          "code": "func (s *Server) Start(addr string) error"
         },
         {
           "name": "StartAutoTLS",
-          "doc": "StartAutoTLS starts the server with automatic TLS certificate management using Let's Encrypt.\nThis method automatically obtains and renews TLS certificates for the specified domain\nusing the ACME protocol. The server will bind to port 443.\n\nParameters:\n  - domain: The domain name for which to obtain certificates (e.g., \"example.com\")\n\nThe method sets up:\n  - Automatic certificate cache in a local \"certs\" directory\n  - Automatic acceptance of Let's Encrypt Terms of Service\n  - Host whitelist policy for the specified domain\n  - TLS configuration with automatic certificate retrieval\n\nRequirements:\n  - The server must be accessible from the internet on port 443\n  - The domain must point to the server's IP address\n  - Port 80 should also be available for ACME challenges (handled automatically by autocert)\n\nThis method will call log.Fatal if the server fails to start, terminating\nthe program. Use this for production deployments where server startup\nfailure should halt the application.\n\nExample:\n\n\tserver := \u0026Server{}\n\tserver.StartAutoTLS(\"example.com\") // Will serve HTTPS on port 443\n",
-          "code": "func (s *Server) StartAutoTLS(domain string)"
+          "doc": "StartAutoTLS starts the server with automatic TLS certificate management using Let's Encrypt.\nThis method automatically obtains and renews TLS certificates for the specified domain\nusing the ACME protocol. The server will bind to port 443.\nIt blocks until the server stops, returning nil after a Shutdown and otherwise\nthe error that stopped it.\n\nParameters:\n  - domain: The domain name for which to obtain certificates (e.g., \"example.com\")\n\nThe method sets up:\n  - Automatic certificate cache in a local \"certs\" directory\n  - Automatic acceptance of Let's Encrypt Terms of Service\n  - Host whitelist policy for the specified domain\n  - TLS configuration with automatic certificate retrieval\n\nRequirements:\n  - The server must be accessible from the internet on port 443\n  - The domain must point to the server's IP address\n  - Port 80 should also be available for ACME challenges (handled automatically by autocert)\n\nExample:\n\n\tapp := falcon.New()\n\tif err := app.StartAutoTLS(\"example.com\"); err != nil { // Will serve HTTPS on port 443\n\t\tlog.Fatal(err)\n\t}\n",
+          "code": "func (s *Server) StartAutoTLS(domain string) error"
         },
         {
           "name": "StartAutoTLSWithStarter",
-          "doc": "StartAutoTLSWithStarter starts the server with automatic TLS certificate management\nusing a custom TLS starter. This method provides the same automatic certificate\nfunctionality as StartAutoTLS but allows dependency injection of the server\nstartup mechanism, making it testable.\n\nParameters:\n  - domain: The domain name for which to obtain certificates (e.g., \"example.com\")\n  - starter: An implementation of TLSStarter interface that handles server startup\n\nThis method is primarily intended for testing purposes where you need to mock\nthe server startup behavior. For production use, prefer StartAutoTLS which\nuses the server's own startup mechanism.\n\nThe method configures:\n  - autocert.Manager with local certificate caching\n  - Automatic TOS acceptance for Let's Encrypt\n  - Host policy restricting certificates to the specified domain\n  - HTTP server bound to port 443 with TLS configuration\n\nExample:\n\n\tserver := \u0026Server{}\n\tmockStarter := \u0026MockTLSStarter{...}\n\tserver.StartAutoTLSWithStarter(\"example.com\", mockStarter)\n",
-          "code": "func (s *Server) StartAutoTLSWithStarter(domain string, starter TLSStarter)"
+          "doc": "StartAutoTLSWithStarter starts the server with automatic TLS certificate management\nusing a custom TLS starter. This method provides the same automatic certificate\nfunctionality as StartAutoTLS but allows dependency injection of the server\nstartup mechanism, making it testable.\n\nParameters:\n  - domain: The domain name for which to obtain certificates (e.g., \"example.com\")\n  - starter: An implementation of TLSStarter interface that handles server startup\n\nThis method is primarily intended for testing purposes where you need to mock\nthe server startup behavior. For production use, prefer StartAutoTLS which\nuses the server's own startup mechanism.\n\nThe method configures:\n  - autocert.Manager with local certificate caching\n  - Automatic TOS acceptance for Let's Encrypt\n  - Host policy restricting certificates to the specified domain\n  - HTTP server bound to port 443 with TLS configuration\n\nExample:\n\n\tapp := falcon.New()\n\tmockStarter := \u0026MockTLSStarter{...}\n\terr := app.StartAutoTLSWithStarter(\"example.com\", mockStarter)\n",
+          "code": "func (s *Server) StartAutoTLSWithStarter(domain string, starter TLSStarter) error"
         },
         {
           "name": "StartTLS",
-          "doc": "StartTLS starts the server with TLS using the provided certificate and key files.\nThe server will bind to the specified address and serve HTTPS traffic.\n\nParameters:\n  - addr: The address to bind to (e.g., \":443\", \"localhost:8443\")\n  - certFile: Path to the TLS certificate file\n  - keyFile: Path to the TLS private key file\n\nThis method will call log.Fatal if the server fails to start, terminating\nthe program. Use this for production deployments where server startup\nfailure should halt the application.\n\nExample:\n\n\tserver := \u0026Server{}\n\tserver.StartTLS(\":443\", \"/path/to/cert.pem\", \"/path/to/key.pem\")\n",
-          "code": "func (s *Server) StartTLS(addr, certFile, keyFile string)"
+          "doc": "StartTLS starts the server with TLS using the provided certificate and key files.\nThe server will bind to the specified address and serve HTTPS traffic.\nIt blocks until the server stops, returning nil after a Shutdown and otherwise\nthe error that stopped it.\n\nParameters:\n  - addr: The address to bind to (e.g., \":443\", \"localhost:8443\")\n  - certFile: Path to the TLS certificate file\n  - keyFile: Path to the TLS private key file\n\nExample:\n\n\tapp := falcon.New()\n\tif err := app.StartTLS(\":443\", \"/path/to/cert.pem\", \"/path/to/key.pem\"); err != nil {\n\t\tlog.Fatal(err)\n\t}\n",
+          "code": "func (s *Server) StartTLS(addr, certFile, keyFile string) error"
         },
         {
           "name": "Use",
-          "doc": "Use registers a global middleware that will run on every request.\nMiddleware is executed in the order it is added.\nExample:\n\n\tserver.Use(middleware.CORS())\n",
+          "doc": "Use registers a global middleware that will run on every request, including\nthe ones no route matches. Middleware is executed in the order it is added,\nand applies to every route no matter whether it was registered before or after.\nExample:\n\n\tserver.Use(middleware.CORS())\n",
           "code": "func (s *Server) Use(mw middleware.Middleware)"
         },
         {
           "name": "UseIf",
-          "doc": "UseIf registers a conditional middleware that only runs if the request path\nmatches the given pattern. Patterns can include a wildcard '*' at the end.\nExample: UseIf(\"/api/v1/*\", AuthMiddleware())\n",
-          "code": "func (s *Server) UseIf(pattern string, mw middleware.Middleware)"
+          "doc": "UseIf registers a middleware that only runs on routes matching one of the patterns.\n\"/api/*\" matches \"/api\" and everything below it, but not \"/apiary\"; a pattern with\nno wildcard matches only the route with exactly that path. Patterns are resolved\nonce per route, so they cost nothing per request. They panic if malformed.\nRequests no route matches, such as 404s, don't run conditional middleware.\nExample: UseIf(AuthMiddleware(), \"/api/v1/*\", \"/admin/*\")\n",
+          "code": "func (s *Server) UseIf(mw middleware.Middleware, patterns ...string)"
+        },
+        {
+          "name": "UseIfNot",
+          "doc": "UseIfNot registers a middleware that runs on every route except those matching one\nof the patterns, which work as in UseIf.\nExample: UseIfNot(AuthMiddleware(), \"/health\", \"/auth/*\")\n",
+          "code": "func (s *Server) UseIfNot(mw middleware.Middleware, patterns ...string)"
         }
       ],
       "package": "falcon",
@@ -170,28 +198,53 @@
       "code": "type TemplateRenderer = server.TemplateRenderer"
     },
     {
+      "name": "Timeouts",
+      "doc": "Timeouts are the limits of the underlying http.Server. Zero means no limit.\n",
+      "package": "falcon",
+      "code": "type Timeouts struct {\n\tReadHeader\ttime.Duration\t// Reading the request headers. This is what stops slowloris attacks\n\tRead\t\ttime.Duration\t// Reading the whole request, including its body\n\tWrite\t\ttime.Duration\t// Writing the response. c.File and c.Stream are exempt\n\tIdle\t\ttime.Duration\t// Keeping a connection open between requests\n}"
+    },
+    {
+      "name": "ValidationError",
+      "doc": "ValidationError is an alias to server.ValidationError, returned by c.Validate.\n",
+      "package": "falcon",
+      "code": "type ValidationError = server.ValidationError"
+    },
+    {
       "name": "CORSConfig",
       "doc": "CORSConfig defines configuration for Cross-Origin Resource Sharing (CORS).\nAllows specifying which origins, headers, and methods are permitted.\n",
       "package": "middleware",
-      "code": "type CORSConfig struct {\n\tAllowOrigins\t[]string\t// Allowed origins, e.g., [\"https://example.com\"] or [\"*\"]\n\tAllowMethods\t[]string\t// Allowed HTTP methods, e.g., [\"GET\", \"POST\"]\n\tAllowHeaders\t[]string\t// Allowed headers, e.g., [\"Content-Type\", \"Authorization\"]\n}"
+      "code": "type CORSConfig struct {\n\tAllowOrigins\t\t[]string\t// Allowed origins, e.g., [\"https://example.com\"] or [\"*\"]\n\tAllowMethods\t\t[]string\t// Allowed HTTP methods, e.g., [\"GET\", \"POST\"]\n\tAllowHeaders\t\t[]string\t// Allowed headers, e.g., [\"Content-Type\", \"Authorization\"]\n\tAllowCredentials\tbool\t\t// Allow cookies and Authorization across origins. Can't be combined with \"*\"\n}"
     },
     {
       "name": "CSRFConfig",
       "doc": "CSRFConfig defines configuration for CSRF protection middleware.\n",
       "package": "middleware",
-      "code": "type CSRFConfig struct {\n\tTokenHeader\tstring\t\t\t\t\t\t// Header to read/write CSRF token\n\tTokenCookie\tstring\t\t\t\t\t\t// Cookie name to store the token\n\tContextKey\tstring\t\t\t\t\t\t// Context key for storing the token\n\tExpiry\t\ttime.Duration\t\t\t\t\t// Token expiration duration\n\tSecret\t\t[]byte\t\t\t\t\t\t// HMAC secret used for token validation\n\tSkipMethods\t[]string\t\t\t\t\t// HTTP methods that don't require validation (safe methods)\n\tErrorHandler\tfunc(*server.Context, error) *server.Response\t// Optional custom error handler\n\tCookieSecure\tbool\t\t\t\t\t\t// Whether the cookie is Secure\n\tCookieHTTPOnly\tbool\t\t\t\t\t\t// Whether the cookie is HttpOnly\n}"
+      "code": "type CSRFConfig struct {\n\tTokenHeader\tstring\t\t\t\t\t\t// Header the client can send the token in\n\tTokenForm\tstring\t\t\t\t\t\t// Form field the client can send the token in, for HTML forms\n\tTokenCookie\tstring\t\t\t\t\t\t// Cookie name holding the value the token is derived from\n\tContextKey\tstring\t\t\t\t\t\t// Context key where handlers read the token to give to the client\n\tExpiry\t\ttime.Duration\t\t\t\t\t// Cookie expiration duration\n\tSecret\t\t[]byte\t\t\t\t\t\t// HMAC secret. If empty a random one is generated, so set it when running several instances\n\tSkipMethods\t[]string\t\t\t\t\t// HTTP methods that don't require validation (safe methods)\n\tErrorHandler\tfunc(*server.Context, error) *server.Response\t// Optional custom error handler\n\tCookieSecure\tbool\t\t\t\t\t\t// Whether the cookie is Secure\n\tCookieHTTPOnly\tbool\t\t\t\t\t\t// Whether the cookie is HttpOnly\n\tCookieSameSite\thttp.SameSite\t\t\t\t\t// The cookie's SameSite mode. Defaults to Lax\n}"
     },
     {
       "name": "ConditionalMiddleware",
-      "doc": "ConditionalMiddleware pairs a middleware with a path pattern.\nThe middleware is only applied if the request path matches the pattern.\nPatterns can include a wildcard '*' at the end to match any subpath.\n",
+      "doc": "ConditionalMiddleware pairs a middleware with path patterns, which decide the routes it\napplies to. Patterns are compared with a route's path as registered, one segment at a time:\n  - \"/api/*\" matches \"/api\", \"/api/users\" and \"/api/users/:id\", but not \"/apiary\";\n  - \"/*\" matches every route;\n  - \"/users/:id\" with no wildcard matches only the route with exactly that path.\n",
+      "methods": [
+        {
+          "name": "AppliesTo",
+          "doc": "AppliesTo reports whether the middleware should wrap the route with this path.\n",
+          "code": "func (cm ConditionalMiddleware) AppliesTo(routePath string) bool"
+        }
+      ],
       "package": "middleware",
-      "code": "type ConditionalMiddleware struct {\n\tPattern\t\tstring\t\t// The URL path pattern to match, e.g., \"/api/v1/*\"\n\tMiddleware\tMiddleware\t// The middleware function to apply when the pattern matches\n}"
+      "code": "type ConditionalMiddleware struct {\n\tPatterns\t[]string\t// The path patterns to match, e.g., \"/api/v1/*\"\n\tNegate\t\tbool\t\t// Apply the middleware to routes matching none of the patterns instead\n\tMiddleware\tMiddleware\t// The middleware function to apply\n}"
     },
     {
       "name": "Middleware",
       "doc": "Middleware defines the function signature for all middleware in Falcon.\nA middleware wraps a HandlerFunc, allowing pre- or post-processing of requests.\nExamples include logging, authentication, profiling, or panic recovery.\n",
       "package": "middleware",
       "code": "type Middleware func(server.HandlerFunc) server.HandlerFunc"
+    },
+    {
+      "name": "RateLimitConfig",
+      "doc": "RateLimitConfig defines configuration for the rate limiting middleware.\nEach client may make Limit requests every Per, and up to Burst of them at once.\n",
+      "package": "middleware",
+      "code": "type RateLimitConfig struct {\n\tLimit\tint\t\t// Requests allowed in each Per, e.g. 100\n\tPer\ttime.Duration\t// The period Limit applies to, e.g. time.Minute\n\tBurst\tint\t\t// Requests allowed at once. Defaults to Limit\n\n\t// KeyFunc decides who counts as one client, such as by API key or user ID. Returning \"\"\n\t// skips limiting for that request. Defaults to the IP address of the connection.\n\tKeyFunc\tfunc(*server.Context) string\n}"
     },
     {
       "name": "ValidationConfig",
@@ -201,11 +254,11 @@
     },
     {
       "name": "Context",
-      "doc": "Context wraps http.ResponseWriter and *http.Request, providing\nconvenience access to route parameters and helper methods in the future.\nFields:\n  - Writer: the http.ResponseWriter to write responses.\n  - Request: the incoming HTTP request.\n  - Params: a map of path parameters extracted from the route (e.g., \":id\").\n",
+      "doc": "Context wraps http.ResponseWriter and *http.Request, providing\nconvenience access to route parameters and helper methods in the future.\nFields:\n  - Writer: the http.ResponseWriter to write responses.\n  - Request: the incoming HTTP request.\n  - Params: the path parameters extracted from the route (e.g., \":id\").\n\nContexts are pooled and reused once the handler returns. A goroutine that outlives\nthe handler must use Copy, not the Context it was given.\n",
       "methods": [
         {
           "name": "Bind",
-          "doc": "Bind reads the request body and decodes it into dest based on Content-Type.\nAutomatically writes a 400 Bad Request response if binding fails.\n",
+          "doc": "Bind reads the request body and decodes it into dest based on Content-Type.\nIf binding fails it returns an *HTTPError, ready to pass to c.Error, with a message\nthat's safe to show to clients. Use ShouldBind for the plain underlying error.\n\nExample:\n\n\tif err := c.Bind(\u0026req); err != nil {\n\t\treturn c.Error(err)\n\t}\n",
           "code": "func (c *Context) Bind(dest any) error"
         },
         {
@@ -220,37 +273,52 @@
         },
         {
           "name": "BindJSON",
-          "doc": "BindJSON enforces JSON Content-Type and decodes into dest.\nAutomatically writes 400 response on error.\n",
+          "doc": "BindJSON enforces JSON Content-Type and decodes into dest.\nIf binding fails it returns an *HTTPError, like Bind.\n",
           "code": "func (c *Context) BindJSON(dest any) error"
         },
         {
           "name": "BindXML",
-          "doc": "BindXML enforces XML Content-Type and decodes into dest.\nAutomatically writes 400 response on error.\n",
+          "doc": "BindXML enforces XML Content-Type and decodes into dest.\nIf binding fails it returns an *HTTPError, like Bind.\n",
           "code": "func (c *Context) BindXML(dest any) error"
         },
         {
           "name": "Blob",
-          "doc": "Blob writes raw binary data with the given Content-Type and returns a Response\nExample: c.Blob(200, data, \"image/png\")\n",
+          "doc": "Blob returns a response with raw binary data and the given Content-Type.\nExample: return c.Blob(200, data, \"image/png\")\n",
           "code": "func (c *Context) Blob(code int, data []byte, contentType string) *Response"
         },
         {
+          "name": "Copy",
+          "doc": "Copy returns a Context that stays valid after the handler returns, for use in goroutines:\n\n\tcp := c.Copy()\n\tgo audit(cp.Param(\"id\"), cp.Get(\"user\"))\n\nThe copy can't respond to the client: anything written to it is discarded.\nIts Request is shared, and net/http closes the request's Body and cancels its\ncontext once the handler returns, so read what you need from those beforehand.\n",
+          "code": "func (c *Context) Copy() *Context"
+        },
+        {
+          "name": "Created",
+          "doc": "Created returns a successful 201 response.\nExample: return c.Created(\"User created\", user)\n",
+          "code": "func (c *Context) Created(message string, details any) *Response"
+        },
+        {
+          "name": "Error",
+          "doc": "Error turns any error into a response. It tries, in order:\n 1. the server's ErrorMapper, set with falcon.WithErrorMapper;\n 2. a *ValidationError, which becomes a 422 listing the invalid fields;\n 3. an *HTTPError, which becomes a response with its code, message and details;\n 4. anything else, which becomes a generic 500. The real error is logged, and\n    only sent to the client in debug mode.\n\nExample:\n\n\tuser, err := repo.Find(id)\n\tif err != nil {\n\t\treturn c.Error(err)\n\t}\n",
+          "code": "func (c *Context) Error(err error) *Response"
+        },
+        {
           "name": "ErrorJSON",
-          "doc": "ErrorJSON writes an error response as JSON with the provided status code.\nIf c.Handled is already true, it returns the Response without writing to the client.\n",
+          "doc": "ErrorJSON returns a failure response. To turn an existing error into a response, use Error.\n",
           "code": "func (c *Context) ErrorJSON(message string, details any, code int) *Response"
         },
         {
           "name": "File",
-          "doc": "File serves a file from disk with proper Content-Type.\nIf file doesn't exist or can't be read, returns a 404/500 JSON response.\n",
+          "doc": "File returns a response that serves a file from disk, with support for range\nrequests and caching. If the file doesn't exist, it returns a 404 instead.\nThe path is used as given, so never build it directly from user input.\nExample: return c.File(\"./reports/latest.pdf\")\n",
           "code": "func (c *Context) File(filePath string) *Response"
         },
         {
           "name": "FormFile",
-          "doc": "FormFile retrieves the file from a multipart form.\nIt returns the first file for the provided form key.\nExample: \u003cinput type=\"file\" name=\"avatar\" /\u003e -\u003e c.FormFile(\"avatar\")\n",
+          "doc": "FormFile retrieves the file from a multipart form.\nIt returns the first file for the provided form key.\nA request over the server's body limit gives an error that c.Error turns into a 413;\nraise the limit with falcon.WithBodyLimit if you accept large uploads.\nExample: \u003cinput type=\"file\" name=\"avatar\" /\u003e -\u003e c.FormFile(\"avatar\")\n",
           "code": "func (c *Context) FormFile(name string) (multipart.File, *multipart.FileHeader, error)"
         },
         {
           "name": "FormValue",
-          "doc": "FormValue returns the first value for the named component of the POST or PUT request body.\nIt calls ParseMultipartForm and ParseForm if necessary.\nExample: \u003cinput type=\"text\" name=\"username\" /\u003e -\u003e c.FormValue(\"username\")\n",
+          "doc": "FormValue returns the first value for the named component of the POST or PUT request body.\nIt calls ParseMultipartForm and ParseForm if necessary. It can't report errors, so a\nrequest over the server's body limit gives \"\".\nExample: \u003cinput type=\"text\" name=\"username\" /\u003e -\u003e c.FormValue(\"username\")\n",
           "code": "func (c *Context) FormValue(name string) string"
         },
         {
@@ -260,18 +328,33 @@
         },
         {
           "name": "HTML",
-          "doc": "HTML writes HTML content and returns a Response\nExample: c.HTML(200, \"\u003ch1\u003eHello\u003c/h1\u003e\")\n",
+          "doc": "HTML returns an HTML response.\nExample: return c.HTML(200, \"\u003ch1\u003eHello\u003c/h1\u003e\")\n",
           "code": "func (c *Context) HTML(code int, html string) *Response"
         },
         {
           "name": "JSON",
-          "doc": "JSON writes the given Response object as JSON with the provided status code.\nThis method respects c.Handled, so it won't write twice if something else already wrote.\n",
+          "doc": "JSON returns a response with every field of the envelope given explicitly.\nFor the common cases see OK and Created for success, and Error for failure.\n",
           "code": "func (c *Context) JSON(success bool, message string, details any, code int) *Response"
+        },
+        {
+          "name": "NoContent",
+          "doc": "NoContent returns a 204 response with no body.\n",
+          "code": "func (c *Context) NoContent() *Response"
+        },
+        {
+          "name": "OK",
+          "doc": "OK returns a successful 200 response.\nExample: return c.OK(\"User found\", user)\n",
+          "code": "func (c *Context) OK(message string, details any) *Response"
         },
         {
           "name": "Param",
           "doc": "Param returns the value of a path parameter by name.\nExample: /users/:id -\u003e c.Param(\"id\") returns \"123\"\n",
           "code": "func (c *Context) Param(name string) string"
+        },
+        {
+          "name": "PostFormValue",
+          "doc": "PostFormValue is like FormValue but only reads the request body, ignoring the URL query.\nBodies that aren't forms, such as JSON, are left unread for the handler.\n",
+          "code": "func (c *Context) PostFormValue(name string) string"
         },
         {
           "name": "Query",
@@ -285,13 +368,18 @@
         },
         {
           "name": "Redirect",
-          "doc": "Redirect sends an HTTP redirect to the specified location.\n",
+          "doc": "Redirect returns an HTTP redirect to the specified location.\nExample: return c.Redirect(302, \"/login\")\n",
           "code": "func (c *Context) Redirect(code int, location string) *Response"
         },
         {
           "name": "Render",
-          "doc": "Render is a helper on Context to render templates using a TemplateRenderer.\nIt sets the response code, handles errors, and ensures the response\nis only written once per request.\n\nParameters:\n  - renderer: the TemplateRenderer to use for rendering\n  - code: HTTP status code for the response\n  - name: template name to render\n  - data: data to pass into the template\n\nReturns a *Response indicating success or failure.\n",
-          "code": "func (c *Context) Render(renderer *TemplateRenderer, code int, name string, data any) *Response"
+          "doc": "Render returns a response with the named template rendered using the server's renderer,\nset with app.SetRenderer. The page is rendered in full first, so a template that fails\nhalfway gives a clean 500 and never a partial page. In debug mode, templates are parsed\nagain on every call so that edits show up without a restart, and a template that no\nlonger parses gives a 500 with the reason until it's fixed.\n\nExample: return c.Render(200, \"users/show.html\", user)\n",
+          "code": "func (c *Context) Render(code int, name string, data any) *Response"
+        },
+        {
+          "name": "Reset",
+          "doc": "Reset prepares a pooled Context for a new request, keeping the Params capacity\nso that later requests don't allocate. Passing nil clears it for return to the pool.\n",
+          "code": "func (c *Context) Reset(w http.ResponseWriter, r *http.Request)"
         },
         {
           "name": "Set",
@@ -299,8 +387,13 @@
           "code": "func (c *Context) Set(key string, value any)"
         },
         {
+          "name": "SetValidator",
+          "doc": "SetValidator sets the validator c.Validate uses for this request.\n",
+          "code": "func (c *Context) SetValidator(v *validator.Validate)"
+        },
+        {
           "name": "ShouldBind",
-          "doc": "ShouldBind attempts to decode the request body into dest based on Content-Type\nwithout automatically writing an error response.\n",
+          "doc": "ShouldBind attempts to decode the request body into dest based on Content-Type\nand returns the underlying error if it fails.\n",
           "code": "func (c *Context) ShouldBind(dest any) error"
         },
         {
@@ -324,18 +417,52 @@
           "code": "func (c *Context) ShouldBindXML(dest any) error"
         },
         {
+          "name": "Stream",
+          "doc": "Stream returns a response whose body is copied from r as it's sent, without holding\nit all in memory. Use it for large or generated bodies, such as exports or proxying.\nIf r is an io.Closer it's closed afterwards, even if middleware replaced the response.\nThe server's write timeout doesn't apply to a stream.\nExample: return c.Stream(200, \"text/csv\", exportReader)\n",
+          "code": "func (c *Context) Stream(code int, contentType string, r io.Reader) *Response"
+        },
+        {
           "name": "String",
-          "doc": "String writes plain text and returns a Response\nExample: c.String(200, \"Hello World\")\n",
+          "doc": "String returns a plain text response.\nExample: return c.String(200, \"Hello World\")\n",
           "code": "func (c *Context) String(code int, s string) *Response"
         },
         {
           "name": "Validate",
-          "doc": "Validate runs validation on the target struct using the stored validator\nIf none exists, it creates a default one on-the-fly\n",
+          "doc": "Validate runs validation on the target struct using the stored validator,\nor the default one if none is set. Invalid fields give a *ValidationError.\n\nExample:\n\n\tif err := c.Validate(\u0026req); err != nil {\n\t\treturn c.Error(err)\n\t}\n",
           "code": "func (c *Context) Validate(target any) error"
+        },
+        {
+          "name": "WriteResponse",
+          "doc": "WriteResponse sends a Response to the client. The server calls it once the handler\nand all middleware have returned. It does nothing if the handler took over the\nWriter (c.Handled) or the response has already been written.\n",
+          "code": "func (c *Context) WriteResponse(resp *Response)"
         }
       ],
       "package": "server",
-      "code": "type Context struct {\n\tWriter\t\thttp.ResponseWriter\n\tRequest\t\t*http.Request\n\tParams\t\tmap[string]string\n\tHandled\t\tbool\n\tTemplates\t*TemplateRenderer\n\tValidator\t*validator.Validate\n\tValues\t\tmap[string]any\n}"
+      "code": "type Context struct {\n\tWriter\thttp.ResponseWriter\n\tRequest\t*http.Request\n\tParams\tParams\n\t// Handled means the handler took over the Writer itself (websockets, server-sent\n\t// events...), so the server must not write anything. Helpers like c.JSON don't set it.\n\tHandled\t\tbool\n\tValidator\t*validator.Validate\n\tValues\t\tmap[string]any\n\t// contains filtered or unexported fields\n}"
+    },
+    {
+      "name": "FieldError",
+      "doc": "FieldError describes one invalid field in a request.\n",
+      "package": "server",
+      "code": "type FieldError struct {\n\tField\tstring\t`json:\"field\"`\t\t// The name the client sends, e.g. \"address.city\"\n\tRule\tstring\t`json:\"rule\"`\t\t// The rule that failed, for code to act on, e.g. \"required\"\n\tMessage\tstring\t`json:\"message\"`\t// A readable description, e.g. \"is required\"\n}"
+    },
+    {
+      "name": "HTTPError",
+      "doc": "HTTPError is an error that knows which response it should become.\nMessage and Details are sent to the client. Err is the underlying cause: it's\nlogged on 5xx errors, and only sent to the client in debug mode.\n\nExample: return c.Error(falcon.NewHTTPError(403, \"You can't edit this post\"))\n",
+      "methods": [
+        {
+          "name": "Error",
+          "doc": "Error implements the error interface.\n",
+          "code": "func (e *HTTPError) Error() string"
+        },
+        {
+          "name": "Unwrap",
+          "doc": "Unwrap returns the underlying cause, for errors.Is and errors.As.\n",
+          "code": "func (e *HTTPError) Unwrap() error"
+        }
+      ],
+      "package": "server",
+      "code": "type HTTPError struct {\n\tCode\tint\n\tMessage\tstring\n\tDetails\tany\n\tErr\terror\n}"
     },
     {
       "name": "HandlerFunc",
@@ -344,55 +471,288 @@
       "code": "type HandlerFunc func(c *Context) *Response"
     },
     {
-      "name": "Response",
-      "doc": "Response is the unified return type for all handlers in Falcon.\nIt is automatically serialized to JSON and written to the client.\nFields:\n  - Success: indicates whether the request was successful.\n  - Message: human-readable message describing the result.\n  - Details: optional field containing extra data (any type).\n  - Code: HTTP status code to be sent to the client. It's Required to have at least one Status code\n",
+      "name": "Param",
+      "doc": "Param is a single path parameter extracted from a request path.\n",
       "package": "server",
-      "code": "type Response struct {\n\tSuccess\tbool\t`json:\"success\"`\n\tMessage\tstring\t`json:\"message\"`\n\tDetails\tany\t`json:\"details,omitempty\"`\n\tCode\tint\t`json:\"code\"`\t// required\n}"
+      "code": "type Param struct {\n\tKey\tstring\n\tValue\tstring\n}"
+    },
+    {
+      "name": "Params",
+      "doc": "Params holds the path parameters of a request, in the order they appear in the route.\nA slice is used instead of a map because routes have few params: a short scan is\nfaster than a map lookup and a pooled slice doesn't allocate.\n",
+      "methods": [
+        {
+          "name": "Get",
+          "doc": "Get returns the value of the named parameter, or \"\" if it isn't present.\n",
+          "code": "func (p Params) Get(name string) string"
+        }
+      ],
+      "package": "server",
+      "code": "type Params []Param"
+    },
+    {
+      "name": "Response",
+      "doc": "Response is the unified return type for all handlers in Falcon.\nIt is automatically serialized to JSON and written to the client.\nFields:\n  - Success: indicates whether the request was successful.\n  - Message: human-readable message describing the result.\n  - Details: optional field containing extra data (any type).\n  - Code: HTTP status code to be sent to the client. It's Required to have at least one Status code\n\nA Response only describes what to send: the server writes it once the handler and\nall middleware have returned, so middleware can still change it on the way out.\nAnything other than this JSON shape (HTML, files, redirects...) can only come from\nthe helpers on Context, such as c.HTML or c.File, because raw can't be set from outside.\n",
+      "methods": [
+        {
+          "name": "ContentType",
+          "doc": "ContentType returns the content type of a raw response. It's \"\" for the JSON\nenvelope, and for raw responses without a body or whose type comes from a file.\n",
+          "code": "func (r *Response) ContentType() string"
+        },
+        {
+          "name": "IsRaw",
+          "doc": "IsRaw reports whether the response is sent as something other than the JSON envelope.\n",
+          "code": "func (r *Response) IsRaw() bool"
+        }
+      ],
+      "package": "server",
+      "code": "type Response struct {\n\tSuccess\tbool\t`json:\"success\"`\n\tMessage\tstring\t`json:\"message\"`\n\tDetails\tany\t`json:\"details,omitempty\"`\n\tCode\tint\t`json:\"code\"`\t// required\n\t// contains filtered or unexported fields\n}"
+    },
+    {
+      "name": "Route",
+      "doc": "Route represents a single registered route in the router.\nIt contains the HTTP method, the route path pattern, and the handler function.\n",
+      "package": "server",
+      "code": "type Route struct {\n\tMethod\tstring\t\t// HTTP method (GET, POST, PUT, etc.)\n\tPath\tstring\t\t// Route pattern, e.g. \"/users/:id\"\n\tHandler\tHandlerFunc\t// Function to handle requests matching this route\n}"
     },
     {
       "name": "Router",
-      "doc": "Router is a minimal HTTP router that supports method-based routing\nand simple path parameters (e.g., /users/:id).\n",
+      "doc": "Router is an HTTP router backed by one radix tree per HTTP method. It supports\nstatic segments, path parameters (/users/:id) and catch-alls (/static/*filepath).\nLookups don't allocate and their cost depends on the path, not the number of routes.\n",
       "methods": [
         {
+          "name": "AllowedMethods",
+          "doc": "AllowedMethods returns the sorted methods a path can be requested with, or nil if\nno route matches it. HEAD is included when GET is, and OPTIONS is always included,\nbecause the server answers both automatically.\n",
+          "code": "func (r *Router) AllowedMethods(path string) []string"
+        },
+        {
           "name": "FindHandler",
-          "doc": "FindHandler attempts to match an incoming request (method + path)\nagainst the registered routes. It supports simple path parameters\nlike \"/users/:id\" and extracts them into a map.\nReturns the matching HandlerFunc and a map of extracted params.\nIf no match is found, it returns (nil, nil).\n",
-          "code": "func (r *Router) FindHandler(method, path string) (HandlerFunc, map[string]string)"
+          "doc": "FindHandler attempts to match an incoming request (method + path)\nagainst the registered routes and appends any path parameters to params.\nIt returns nil if no route matches, leaving params unchanged.\n",
+          "code": "func (r *Router) FindHandler(method, path string, params *Params) HandlerFunc"
         },
         {
           "name": "Handle",
-          "doc": "Handle registers a new route with a specific HTTP method, path, and handler.\n",
-          "code": "func (r *Router) Handle(method, path string, handler HandlerFunc)"
+          "doc": "Handle registers a new route with a specific HTTP method, path, and handler.\nIt panics if the path doesn't start with \"/\" or conflicts with an existing route,\nso mistakes surface at startup instead of on some later request.\nThe returned Route's Handler can be replaced until the router starts serving.\n",
+          "code": "func (r *Router) Handle(method, path string, handler HandlerFunc) *Route"
+        },
+        {
+          "name": "Routes",
+          "doc": "Routes returns every registered route.\n",
+          "code": "func (r *Router) Routes() []*Route"
         }
       ],
       "package": "server",
       "code": "type Router struct {\n\t// contains filtered or unexported fields\n}"
     },
     {
+      "name": "Settings",
+      "doc": "Settings holds the server-wide options the Context needs while handling a request.\n",
+      "package": "server",
+      "code": "type Settings struct {\n\tDebug\t\tbool\t\t\t\t// Show error details to clients\n\tErrorMapper\tfunc(err error) *Response\t// Turns application errors into responses, or returns nil to pass\n\tBodyLimit\tint64\t\t\t\t// Maximum size of a request body, in bytes\n\tMultipartMemory\tint64\t\t\t\t// Maximum bytes of a multipart form kept in memory, the rest goes to disk\n\tRenderer\t*TemplateRenderer\t\t// Renders templates for c.Render\n}"
+    },
+    {
       "name": "TemplateRenderer",
-      "doc": "TemplateRenderer manages HTML templates for rendering in Falcon.\nIt supports thread-safe access and optional development mode for live reloading.\n",
+      "doc": "TemplateRenderer renders HTML templates. Output is always escaped by html/template.\nEvery file with a .html, .tmpl or .gohtml extension is a template, named by its\nslash-separated path relative to the root, such as \"users/show.html\".\n\nFiles under the top-level layouts/ and partials/ folders are shared with every other\ntemplate. Everything else is a page, parsed separately, so that any number of pages\ncan define the same block without overwriting each other:\n\n\t\u003c!-- layouts/base.html --\u003e\n\t\u003chtml\u003e\u003cbody\u003e{{template \"partials/nav.html\" .}}{{template \"content\" .}}\u003c/body\u003e\u003c/html\u003e\n\n\t\u003c!-- users/show.html --\u003e\n\t{{template \"layouts/base.html\" .}}\n\t{{define \"content\"}}\u003ch1\u003e{{.Name}}\u003c/h1\u003e{{end}}\n\nIt's safe for concurrent use.\n",
       "methods": [
         {
           "name": "Render",
-          "doc": "Render executes the template with the given name and data, writing\nthe output to the provided http.ResponseWriter.\nIn dev mode, templates are reloaded on each render.\n",
-          "code": "func (tr *TemplateRenderer) Render(w http.ResponseWriter, name string, data interface{}) error"
+          "doc": "Render executes the named template and writes the output to w. Handlers should\nuse c.Render instead; this is for rendering elsewhere, such as into an email.\n",
+          "code": "func (tr *TemplateRenderer) Render(w io.Writer, name string, data any) error"
         }
       ],
       "package": "server",
       "code": "type TemplateRenderer struct {\n\t// contains filtered or unexported fields\n}"
     },
     {
-      "name": "TestStruct",
-      "doc": "",
-      "package": "server_test",
-      "code": "type TestStruct struct {\n\tName\tstring\t`validate:\"required\"`\n\tEmail\tstring\t`validate:\"required,email\"`\n}"
+      "name": "ValidationError",
+      "doc": "ValidationError is returned by c.Validate when fields are invalid.\nc.Error turns it into a 422 response whose details list the fields.\n",
+      "methods": [
+        {
+          "name": "Error",
+          "doc": "Error implements the error interface.\n",
+          "code": "func (e *ValidationError) Error() string"
+        },
+        {
+          "name": "Unwrap",
+          "doc": "Unwrap returns the original error from the validator.\n",
+          "code": "func (e *ValidationError) Unwrap() error"
+        }
+      ],
+      "package": "server",
+      "code": "type ValidationError struct {\n\tFields\t[]FieldError\n\tErr\terror\t// The original error from the validator\n}"
     }
   ],
   "functions": [
     {
-      "name": "NewTemplateRenderer",
-      "doc": "NewTemplateRenderer Encapsulates server.NewTemplateRenderer\n",
+      "name": "NewHTTPError",
+      "doc": "NewHTTPError creates an error that c.Error turns into a response with this code and message.\nExample: return c.Error(falcon.NewHTTPError(403, \"You can't edit this post\"))\n",
       "package": "falcon",
-      "code": "func NewTemplateRenderer(pattern string, devMode bool, funcs template.FuncMap) *server.TemplateRenderer"
+      "code": "func NewHTTPError(code int, message string) *HTTPError"
+    },
+    {
+      "name": "WithBodyLimit",
+      "doc": "WithBodyLimit sets the maximum size of a request body in bytes, including file uploads.\nLarger bodies get a 413. The default is 10MB, so raise it if you accept large uploads.\n",
+      "package": "falcon",
+      "code": "func WithBodyLimit(bytes int64) Option"
+    },
+    {
+      "name": "WithDebug",
+      "doc": "WithDebug makes error responses include the underlying error, which helps during\ndevelopment but exposes internals. Never use it in production.\n",
+      "package": "falcon",
+      "code": "func WithDebug() Option"
+    },
+    {
+      "name": "WithErrorMapper",
+      "doc": "WithErrorMapper sets a function that turns your application's errors into responses\nin one place, so that handlers only need to call c.Error. It runs before any other\nhandling; return nil to leave an error to the default behaviour.\n\nExample:\n\n\tfalcon.WithErrorMapper(func(err error) *falcon.Response {\n\t\tif errors.Is(err, repo.ErrNotFound) {\n\t\t\treturn \u0026falcon.Response{Message: \"Not found\", Code: 404}\n\t\t}\n\t\treturn nil\n\t})\n",
+      "package": "falcon",
+      "code": "func WithErrorMapper(mapper func(err error) *Response) Option"
+    },
+    {
+      "name": "WithMultipartMemory",
+      "doc": "WithMultipartMemory sets how many bytes of a multipart form are kept in memory;\nthe rest is stored in temporary files. The default is 32MB.\n",
+      "package": "falcon",
+      "code": "func WithMultipartMemory(bytes int64) Option"
+    },
+    {
+      "name": "WithTimeouts",
+      "doc": "WithTimeouts replaces the server's timeouts. Any limit left at zero is turned off.\nThe defaults are 10s to read headers, 60s to read a request, 60s to write a\nresponse, and 120s for an idle connection.\n",
+      "package": "falcon",
+      "code": "func WithTimeouts(timeouts Timeouts) Option"
+    },
+    {
+      "name": "New",
+      "doc": "New creates a new Falcon Server instance with an empty router and middleware stack.\nExample:\n\n\tserver := falcon.New()\n\tserver := falcon.New(falcon.WithDebug())\n",
+      "package": "falcon",
+      "code": "func New(options ...Option) *Server"
+    },
+    {
+      "name": "NewTemplateRenderer",
+      "doc": "NewTemplateRenderer parses every template (.html, .tmpl, .gohtml) under dir. Templates\nare named by their path relative to dir, such as \"users/show.html\". Files under the\ntop-level layouts/ and partials/ folders are shared with every template.\n",
+      "package": "falcon",
+      "code": "func NewTemplateRenderer(dir string, funcs template.FuncMap) (*TemplateRenderer, error)"
+    },
+    {
+      "name": "NewTemplateRendererFS",
+      "doc": "NewTemplateRendererFS is like NewTemplateRenderer but reads templates from fsys, such\nas an embed.FS, which ships them inside the binary.\n",
+      "package": "falcon",
+      "code": "func NewTemplateRendererFS(fsys fs.FS, funcs template.FuncMap) (*TemplateRenderer, error)"
+    },
+    {
+      "name": "NewConditionalMiddleware",
+      "doc": "NewConditionalMiddleware creates a ConditionalMiddleware. It panics on patterns that\ncouldn't match what they appear to mean, so the mistake shows up at startup.\n",
+      "package": "middleware",
+      "code": "func NewConditionalMiddleware(mw Middleware, negate bool, patterns []string) ConditionalMiddleware"
+    },
+    {
+      "name": "CORS",
+      "doc": "CORS returns a default CORS middleware using defaultCORSConfig.\nIt allows all origins, common HTTP methods, and standard headers, without credentials.\nTo allow cookies or Authorization across origins, list the origins with CORSWithConfig.\n",
+      "package": "middleware",
+      "code": "func CORS() Middleware"
+    },
+    {
+      "name": "CORSWithConfig",
+      "doc": "CORSWithConfig returns a CORS middleware configured with the given CORSConfig.\nParameters:\n  - cfg: custom CORS configuration (AllowOrigins, AllowMethods, AllowHeaders, AllowCredentials).\n\nIt panics if AllowOrigins contains \"*\" while AllowCredentials is set, because that\nwould let any website make logged-in requests on behalf of a user.\n\nBehavior:\n  - Sets `Vary: Origin`, so that caches keep responses for different origins apart.\n  - Sets `Access-Control-Allow-Origin` to \"*\", or to the request origin if it's listed.\n  - Sets `Access-Control-Allow-Credentials` only if cfg.AllowCredentials is set.\n  - Sets `Access-Control-Allow-Methods` and `Access-Control-Allow-Headers` on preflight.\n  - Handles OPTIONS preflight requests with HTTP 204 and stops further processing.\n  - Requests without an Origin header aren't cross-origin, and pass straight through.\n",
+      "package": "middleware",
+      "code": "func CORSWithConfig(cfg CORSConfig) Middleware"
+    },
+    {
+      "name": "CSRF",
+      "doc": "CSRF returns a middleware using the default CSRF configuration.\nIt validates incoming requests for unsafe methods and gives every request a token.\n\nThe secret is random, so tokens stop working on restart and aren't shared between\ninstances. Use CSRFWithConfig with a Secret if that matters.\n",
+      "package": "middleware",
+      "code": "func CSRF() Middleware"
+    },
+    {
+      "name": "CSRFWithConfig",
+      "doc": "CSRFWithConfig returns a CSRF middleware with a custom configuration.\n\nParameters:\n  - cfg: CSRFConfig struct to override defaults (header, cookie, secret, expiry, etc.)\n\nIt works as a signed double submit: a cookie holds a random value, and an unsafe\nrequest must send the HMAC of that value, in cfg.TokenHeader or the cfg.TokenForm form\nfield. Another site can make a browser send the cookie, but it can't read it or\ncompute the HMAC.\n\nHandlers read the token to give to the client with c.Get(cfg.ContextKey), for example\nfrom an endpoint the frontend calls first, or by rendering it into a form:\n\n\t\u003cinput type=\"hidden\" name=\"csrf_token\" value=\"{{.CSRFToken}}\"\u003e\n\nBehavior:\n  - Skips validation for HTTP methods listed in cfg.SkipMethods.\n  - Reads the token from the header, then from the form body. Never from a cookie: a\n    browser attaches cookies to forged requests on its own, so they prove nothing. Never\n    from the URL query either, where tokens leak through logs and Referer headers.\n  - Validates the token against the cookie and the server-side secret.\n  - Returns 403 Forbidden if the token or cookie is missing or the token is wrong\n    (or calls cfg.ErrorHandler if defined).\n  - Ensures a cookie is set and a token is in the context on every other request.\n",
+      "package": "middleware",
+      "code": "func CSRFWithConfig(cfg CSRFConfig) Middleware"
+    },
+    {
+      "name": "ConcurrencyLimit",
+      "doc": "ConcurrencyLimit returns a middleware that lets at most n requests be handled at once,\nand answers any more with a 503 straight away instead of queueing them. Use it on slow\nor expensive routes, such as reports or calls to other services.\n\nIt counts the time the handler and the middleware inside it run. The response is\nwritten after that, so a long download from c.File or c.Stream doesn't hold a place.\nRejections aren't logged, because logging every one would add to the load at the\nmoment the server can least afford it.\n\nExample: app.UseIf(middleware.ConcurrencyLimit(10), \"/reports/*\")\n",
+      "package": "middleware",
+      "code": "func ConcurrencyLimit(n int) Middleware"
+    },
+    {
+      "name": "JWTMiddleware",
+      "doc": "JWTMiddleware returns a middleware that validates JWT tokens in the Authorization header.\nThe token must use the \"Bearer \" scheme, e.g. \"Authorization: Bearer \u003ctoken\u003e\".\nIt verifies the token using the provided HMAC secret.\nIf the token is invalid, missing, or has the wrong signing method, it returns a 401 Unauthorized response.\nOn success, the token claims are stored in the Context under the key \"user\" for access in handlers.\n\nExample usage:\n\n\tapp.Use(JWTMiddleware(\"supersecretkey\"))\n",
+      "package": "middleware",
+      "code": "func JWTMiddleware(secret string) Middleware"
+    },
+    {
+      "name": "Logger",
+      "doc": "Logger returns a middleware that logs each request's method, path, status and duration\nthrough the standard log package, which adds the date and time:\n\n\t2026/11/07 13:54:30 GET \"/users/42\" 200 (182.4µs)\n",
+      "package": "middleware",
+      "code": "func Logger() Middleware"
+    },
+    {
+      "name": "ProfilingMiddleware",
+      "doc": "ProfilingMiddleware logs detailed timing info including handler execution and memory usage.\nReading memory stats briefly stops the whole program, so use it for development only.\n",
+      "package": "middleware",
+      "code": "func ProfilingMiddleware() Middleware"
+    },
+    {
+      "name": "RateLimit",
+      "doc": "RateLimit returns a middleware allowing each client limit requests every per, by IP\naddress. Up to limit requests can arrive at once, so a page making several calls in\nquick succession isn't refused. Extra requests get a 429 with a Retry-After header.\n\nLimits are kept in memory, so with several instances of your app behind a load\nbalancer, each one counts separately. Behind a proxy, every request appears to come\nfrom the proxy's address; see RateLimitConfig.KeyFunc for that case.\n\nExample:\n\n\tapp.Use(middleware.RateLimit(100, time.Minute))\n\tapp.UseIf(middleware.RateLimit(5, time.Minute), \"/auth/login\")\n",
+      "package": "middleware",
+      "code": "func RateLimit(limit int, per time.Duration) Middleware"
+    },
+    {
+      "name": "RateLimitWithConfig",
+      "doc": "RateLimitWithConfig returns a rate limiting middleware with a custom configuration.\nIt panics if the configuration can't work, so the mistake shows up at startup.\n\nBehind a load balancer or proxy, set KeyFunc to read the client's address from the\nheader your proxy sets. Never trust that header without a proxy in front: clients can\nset it to anything, and a new value on every request would never be limited.\n\nEvery response carries RateLimit-Limit, RateLimit-Remaining and RateLimit-Reset\nheaders, so clients can slow down before they're refused.\n",
+      "package": "middleware",
+      "code": "func RateLimitWithConfig(cfg RateLimitConfig) Middleware"
+    },
+    {
+      "name": "Recovery",
+      "doc": "Panic Recovery\nRecovery returns a middleware that recovers from panics and responds with a 500.\nThe panic and its stack trace are always logged, but the client only sees the panic\nmessage in debug mode. http.ErrAbortHandler passes through, because it's how a handler\ndeliberately aborts a connection.\n",
+      "package": "middleware",
+      "code": "func Recovery() Middleware"
+    },
+    {
+      "name": "ValidationMiddleware",
+      "doc": "ValidationMiddleware returns a middleware that injects a validator instance into the Context.\nThe validator can then be accessed in handlers via c.Validator() (or c.SetValidator internally).\nExample usage:\n\n\tapp.Use(ValidationMiddleware(ValidationConfig{}))\n",
+      "package": "middleware",
+      "code": "func ValidationMiddleware(cfg ValidationConfig) Middleware"
+    },
+    {
+      "name": "NewValidator",
+      "doc": "NewValidator creates a validator that reports fields by their json name. A custom\nvalidator passed to c.SetValidator needs the same setup to report the same names.\n",
+      "package": "server",
+      "code": "func NewValidator() *validator.Validate"
+    },
+    {
+      "name": "NewContext",
+      "doc": "NewContext creates a Context for a server to pool, with room for a typical number of params.\n",
+      "package": "server",
+      "code": "func NewContext(settings *Settings) *Context"
+    },
+    {
+      "name": "NewHTTPError",
+      "doc": "NewHTTPError creates an HTTPError. An empty message means the standard text for the code.\n",
+      "package": "server",
+      "code": "func NewHTTPError(code int, message string) *HTTPError"
+    },
+    {
+      "name": "NewRouter",
+      "doc": "NewRouter creates and returns a new Router instance.\n",
+      "package": "server",
+      "code": "func NewRouter() *Router"
+    },
+    {
+      "name": "DefaultSettings",
+      "doc": "DefaultSettings returns the settings a server starts with.\n",
+      "package": "server",
+      "code": "func DefaultSettings() Settings"
+    },
+    {
+      "name": "NewTemplateRenderer",
+      "doc": "NewTemplateRenderer parses every template under dir.\nExample: NewTemplateRenderer(\"views\", nil)\n",
+      "package": "server",
+      "code": "func NewTemplateRenderer(dir string, funcs template.FuncMap) (*TemplateRenderer, error)"
+    },
+    {
+      "name": "NewTemplateRendererFS",
+      "doc": "NewTemplateRendererFS parses every template in fsys. Use it with embed.FS to\nship templates inside the binary, using fs.Sub if they're in a subfolder.\n",
+      "package": "server",
+      "code": "func NewTemplateRendererFS(fsys fs.FS, funcs template.FuncMap) (*TemplateRenderer, error)"
     }
   ]
 }
