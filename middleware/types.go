@@ -67,6 +67,9 @@ type CORSConfig struct {
 	AllowMethods     []string // Allowed HTTP methods, e.g., ["GET", "POST"]
 	AllowHeaders     []string // Allowed headers, e.g., ["Content-Type", "Authorization"]
 	AllowCredentials bool     // Allow cookies and Authorization across origins. Can't be combined with "*"
+	MaxAge           int      // MaxAge is the number of seconds browsers may cache preflight results
+	ExposeHeaders    []string // ExposeHeaders lists response headers that browser JavaScript may access
+
 }
 
 // CSRFConfig defines configuration for CSRF protection middleware.

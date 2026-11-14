@@ -15,10 +15,21 @@ import (
 // limitBody applies the server's body limit to the request, once. Everything that reads
 // the body goes through it, so that no route can read an unlimited amount from a client.
 func (c *Context) limitBody() {
-	if c.bodyLimited || c.Request.Body == nil {
+	if c.bodyLimited || c.Request == nil || c.Request.Body == nil {
 		return
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, c.config().BodyLimit)
+
+	cfg := c.settings
+	if cfg == nil {
+		cfg = &defaultSettings
+	}
+
+	c.Request.Body = http.MaxBytesReader(
+		c.Writer,
+		c.Request.Body,
+		cfg.BodyLimit,
+	)
+
 	c.bodyLimited = true
 }
 
@@ -122,30 +133,44 @@ func (c *Context) bindFormToStruct(values url.Values, dest any) error {
 //   - value: string to parse and assign to the field
 //
 // Returns an error if the type is unsupported or parsing fails.
+// setFieldValue sets a reflect.Value field from a string, based on its kind.
+// Supported types: string, signed integers, unsigned integers, bool, float variants.
 func (c *Context) setFieldValue(field reflect.Value, value string) error {
 	switch field.Kind() {
 	case reflect.String:
 		field.SetString(value)
+
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		intVal, err := strconv.ParseInt(value, 10, 64)
+		intVal, err := strconv.ParseInt(value, 10, field.Type().Bits())
 		if err != nil {
 			return err
 		}
 		field.SetInt(intVal)
+
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		uintVal, err := strconv.ParseUint(value, 10, field.Type().Bits())
+		if err != nil {
+			return err
+		}
+		field.SetUint(uintVal)
+
 	case reflect.Bool:
 		boolVal, err := strconv.ParseBool(value)
 		if err != nil {
 			return err
 		}
 		field.SetBool(boolVal)
+
 	case reflect.Float32, reflect.Float64:
-		floatVal, err := strconv.ParseFloat(value, 64)
+		floatVal, err := strconv.ParseFloat(value, field.Type().Bits())
 		if err != nil {
 			return err
 		}
 		field.SetFloat(floatVal)
+
 	default:
 		return fmt.Errorf("unsupported field type: %s", field.Kind())
 	}
+
 	return nil
 }

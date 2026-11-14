@@ -123,6 +123,7 @@ func (c *Context) Reset(w http.ResponseWriter, r *http.Request) {
 	c.stream = nil
 	c.bodyLimited = false
 	c.query = nil
+	c.limitBody()
 }
 
 // Copy returns a Context that stays valid after the handler returns, for use in goroutines:

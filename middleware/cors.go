@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/ascendingheavens/falcon/server"
@@ -67,6 +68,7 @@ func CORSWithConfig(cfg CORSConfig) Middleware {
 
 	allowMethods := strings.Join(cfg.AllowMethods, ", ")
 	allowHeaders := strings.Join(cfg.AllowHeaders, ", ")
+	exposeHeaders := strings.Join(cfg.ExposeHeaders, ", ")
 
 	return func(next server.HandlerFunc) server.HandlerFunc {
 		return func(c *server.Context) *server.Response {
@@ -97,6 +99,10 @@ func CORSWithConfig(cfg CORSConfig) Middleware {
 				header.Set("Access-Control-Allow-Credentials", "true")
 			}
 
+			if allowed && exposeHeaders != "" {
+				header.Set("Access-Control-Expose-Headers", exposeHeaders)
+			}
+
 			// Continue normal middleware/handler flow
 			if c.Request.Method != http.MethodOptions {
 				return next(c)
@@ -106,6 +112,10 @@ func CORSWithConfig(cfg CORSConfig) Middleware {
 			if allowed {
 				header.Set("Access-Control-Allow-Methods", allowMethods)
 				header.Set("Access-Control-Allow-Headers", allowHeaders)
+			}
+
+			if allowed && cfg.MaxAge > 0 {
+				header.Set("Access-Control-Max-Age", strconv.Itoa(cfg.MaxAge))
 			}
 			return c.NoContent()
 		}

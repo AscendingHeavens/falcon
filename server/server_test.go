@@ -7,7 +7,6 @@ import (
 )
 
 func TestRouter(t *testing.T) {
-	// Setup
 	router := NewRouter()
 	testHandler := func(c *Context) *Response {
 		return &Response{Success: true, Message: "ok", Code: 200}
@@ -24,54 +23,19 @@ func TestRouter(t *testing.T) {
 		wantFound  bool
 		wantParams Params
 	}{
-		{
-			"static route match",
-			"GET",
-			"/users",
-			true,
-			nil,
-		},
-		{
-			"parameter route match",
-			"GET",
-			"/users/123",
-			true,
-			Params{{Key: "id", Value: "123"}},
-		},
-		{
-			"parameter route with post method",
-			"POST",
-			"/users/456/update",
-			true,
-			Params{{Key: "id", Value: "456"}},
-		},
-		{
-			"wrong method",
-			"POST",
-			"/users",
-			false,
-			nil,
-		},
-		{
-			"no route found",
-			"GET",
-			"/unknown",
-			false,
-			nil,
-		},
-		{
-			"path length mismatch",
-			"GET",
-			"/users/123/extra",
-			false,
-			nil,
-		},
+		{"static route match", "GET", "/users", true, nil},
+		{"parameter route match", "GET", "/users/123", true, Params{{Key: "id", Value: "123"}}},
+		{"parameter route with post method", "POST", "/users/456/update", true, Params{{Key: "id", Value: "456"}}},
+		{"wrong method", "POST", "/users", false, nil},
+		{"no route found", "GET", "/unknown", false, nil},
+		{"path length mismatch", "GET", "/users/123/extra", false, nil},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var params Params
 			h := router.FindHandler(tt.method, tt.path, &params)
+
 			if tt.wantFound {
 				assert.NotNil(t, h)
 				assert.Equal(t, tt.wantParams, params)
@@ -88,19 +52,16 @@ func TestContextSetGet(t *testing.T) {
 
 	t.Run("Set and Get a value", func(t *testing.T) {
 		c.Set("foo", "bar")
-		val := c.Get("foo")
-		assert.Equal(t, "bar", val)
+		assert.Equal(t, "bar", c.Get("foo"))
 	})
 
 	t.Run("Get returns nil for missing key", func(t *testing.T) {
-		val := c.Get("nonexistent")
-		assert.Nil(t, val)
+		assert.Nil(t, c.Get("nonexistent"))
 	})
 
 	t.Run("Overwrite existing key", func(t *testing.T) {
 		c.Set("foo", 42)
-		val := c.Get("foo")
-		assert.Equal(t, 42, val)
+		assert.Equal(t, 42, c.Get("foo"))
 	})
 
 	t.Run("Values map is lazily initialized", func(t *testing.T) {
