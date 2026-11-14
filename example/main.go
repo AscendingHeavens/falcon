@@ -1,3 +1,6 @@
+// Copyright 2026 Google LLC
+// SPDX-License-Identifier: MIT
+
 // Command example is a small app using Falcon's main features: the JSON envelope,
 // validation, central error mapping, templates, CSRF-protected forms, rate limiting
 // and graceful shutdown.

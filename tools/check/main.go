@@ -1,3 +1,6 @@
+// Copyright 2026 Google LLC
+// SPDX-License-Identifier: MIT
+
 // Command check runs the repository checks that need more than a single command. It's
 // written in Go rather than shell so that the Makefile works the same on Windows, macOS
 // and Linux.

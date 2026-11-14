@@ -1,39 +1,119 @@
+# Copyright 2026 Google LLC
+# SPDX-License-Identifier: MIT
+
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
-    branches: [main]
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 jobs:
-  test:
-    name: Run tests with coverage
+  lint:
+    name: lint
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v6
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - name: Setup Go
+        uses: actions/setup-go@v6
         with:
-          go-version: "1.27.x"
+          go-version-file: go.mod
+          cache: true
 
-      - name: Run tests and enforce coverage
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13
+
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run all package tests
+        run: go test ./...
+
+      - name: Run race tests with core coverage
+        shell: bash
         run: |
-          echo "Running tests (excluding ./example)..."
-          # Run tests for all packages except ./example
-          go test $(go list ./... | grep -v '^github.com/ascendingheavens/falcon/example' | grep -v '^github.com/ascendingheavens/falcon/docs' ) \
-            -json -coverprofile=coverage.out -covermode=atomic | tee test_output.json
+          # Exclude documentation tooling and examples from the
+          # framework's aggregate coverage calculation.
+          packages=$(go list ./... | grep -Ev '/(docs|example)$')
 
-          total_tests=$(grep -c '"Action":"run"' test_output.json || true)
-          echo "✅ Total tests executed: $total_tests"
-
-          echo "Generating coverage report..."
-          go tool cover -func=coverage.out
-          total=$(go tool cover -func=coverage.out | grep total: | awk '{print substr($3, 1, length($3)-1)}')
-          echo "Total coverage is $total%"
-          if (( $(echo "$total < 85.0" | bc -l) )); then
-            echo "Test coverage ($total%) is below 85%! ❌"
+          if [ -z "$packages" ]; then
+            echo "No core packages found"
             exit 1
           fi
+
+          coverpkg=$(echo "$packages" | paste -sd, -)
+
+          echo "Packages included in coverage:"
+          echo "$packages"
+
+          go test \
+            -race \
+            -covermode=atomic \
+            -coverpkg="$coverpkg" \
+            -coverprofile=coverage.out \
+            ./...
+
+      - name: Enforce 85% core coverage
+        shell: bash
+        run: |
+          coverage=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')
+
+          if [ -z "$coverage" ]; then
+            echo "Could not determine aggregate coverage"
+            exit 1
+          fi
+
+          echo "Core framework coverage: ${coverage}%"
+          echo "Required coverage: 85%"
+
+          awk -v coverage="$coverage" 'BEGIN {
+            if (coverage + 0 < 85) {
+              print "Coverage is below the required 85%"
+              exit 1
+            }
+            print "Coverage requirement passed"
+          }'
+
+  license:
+    name: license
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check SPDX license headers
+        run: |
+          go run github.com/google/addlicense@v1.2.0 \
+            -check \
+            -s=only \
+            -l mit \
+            .
