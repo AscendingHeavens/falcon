@@ -79,6 +79,14 @@ func CSRFWithConfig(cfg CSRFConfig) Middleware {
 	if len(cfg.Secret) == 0 {
 		cfg.Secret = []byte(generateCSRFToken(32))
 	}
+	// Set cookie security defaults unless explicitly configured.
+	if !cfg.CookieSecureSet && !cfg.CookieSecure {
+		cfg.CookieSecure = defaultCSRFConfig.CookieSecure
+	}
+
+	if !cfg.CookieHTTPOnlySet && !cfg.CookieHTTPOnly {
+		cfg.CookieHTTPOnly = defaultCSRFConfig.CookieHTTPOnly
+	}
 
 	return func(next server.HandlerFunc) server.HandlerFunc {
 		return func(c *server.Context) *server.Response {

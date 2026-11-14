@@ -71,17 +71,19 @@ type CORSConfig struct {
 
 // CSRFConfig defines configuration for CSRF protection middleware.
 type CSRFConfig struct {
-	TokenHeader    string                                        // Header the client can send the token in
-	TokenForm      string                                        // Form field the client can send the token in, for HTML forms
-	TokenCookie    string                                        // Cookie name holding the value the token is derived from
-	ContextKey     string                                        // Context key where handlers read the token to give to the client
-	Expiry         time.Duration                                 // Cookie expiration duration
-	Secret         []byte                                        // HMAC secret. If empty a random one is generated, so set it when running several instances
-	SkipMethods    []string                                      // HTTP methods that don't require validation (safe methods)
-	ErrorHandler   func(*server.Context, error) *server.Response // Optional custom error handler
-	CookieSecure   bool                                          // Whether the cookie is Secure
-	CookieHTTPOnly bool                                          // Whether the cookie is HttpOnly
-	CookieSameSite http.SameSite                                 // The cookie's SameSite mode. Defaults to Lax
+	TokenHeader       string                                        // Header the client can send the token in
+	TokenForm         string                                        // Form field the client can send the token in, for HTML forms
+	TokenCookie       string                                        // Cookie name holding the value the token is derived from
+	ContextKey        string                                        // Context key where handlers read the token to give to the client
+	Expiry            time.Duration                                 // Cookie expiration duration
+	Secret            []byte                                        // HMAC secret. If empty a random one is generated, so set it when running several instances
+	SkipMethods       []string                                      // HTTP methods that don't require validation (safe methods)
+	ErrorHandler      func(*server.Context, error) *server.Response // Optional custom error handler
+	CookieSecure      bool                                          // Whether the cookie is Secure
+	CookieHTTPOnly    bool                                          // Whether the cookie is HttpOnly
+	CookieSecureSet   bool                                          // Whether the cookie's Secure attribute has been explicitly set
+	CookieHTTPOnlySet bool                                          // Whether the cookie's HttpOnly attribute has been explicitly set
+	CookieSameSite    http.SameSite                                 // The cookie's SameSite mode. Defaults to Lax
 }
 
 // RateLimitConfig defines configuration for the rate limiting middleware.

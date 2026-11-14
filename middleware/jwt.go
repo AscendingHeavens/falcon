@@ -19,6 +19,9 @@ import (
 //
 //	app.Use(JWTMiddleware("supersecretkey"))
 func JWTMiddleware(secret string) Middleware {
+	if secret == "" {
+		panic("JWTMiddleware: secret must not be empty")
+	}
 	return func(next server.HandlerFunc) server.HandlerFunc {
 		return func(c *server.Context) *server.Response {
 			auth := c.Request.Header.Get("Authorization")

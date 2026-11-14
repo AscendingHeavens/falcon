@@ -15,9 +15,22 @@ import (
 func TestJWTMiddleware(t *testing.T) {
 	secret := "mysecret"
 
+	t.Run("Empty secret panics", func(t *testing.T) {
+		assert.PanicsWithValue(t,
+			"JWTMiddleware: secret must not be empty",
+			func() {
+				middleware.JWTMiddleware("")
+			},
+		)
+	})
+
 	// Dummy next handler
 	nextHandler := func(c *server.Context) *server.Response {
-		return &server.Response{Success: true, Message: "OK", Code: 200}
+		return &server.Response{
+			Success: true,
+			Message: "OK",
+			Code:    200,
+		}
 	}
 
 	t.Run("Missing Authorization header", func(t *testing.T) {
@@ -46,11 +59,11 @@ func TestJWTMiddleware(t *testing.T) {
 	})
 
 	t.Run("Valid token sets claims and calls next", func(t *testing.T) {
-		// Create a valid token
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 			"email": "test@example.com",
 			"exp":   time.Now().Add(time.Hour).Unix(),
 		})
+
 		tokenStr, err := token.SignedString([]byte(secret))
 		assert.NoError(t, err)
 
@@ -63,7 +76,7 @@ func TestJWTMiddleware(t *testing.T) {
 		resp := mw(nextHandler)(c)
 
 		assert.True(t, resp.Success)
-		assert.Equal(t, 200, resp.Code)
+		assert.Equal(t, http.StatusOK, resp.Code)
 
 		claims := c.Get("user").(jwt.MapClaims)
 		assert.Equal(t, "test@example.com", claims["email"])

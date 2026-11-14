@@ -1,7 +1,6 @@
 package falcon
 
 import (
-	"crypto/tls"
 	"log"
 	"net/http"
 
@@ -107,7 +106,19 @@ func (s *Server) StartAutoTLSWithStarter(domain string, starter TLSStarter) erro
 	}
 
 	server := s.newHTTPServer(":443")
-	server.TLSConfig = &tls.Config{GetCertificate: manager.GetCertificate}
+	server.TLSConfig = manager.TLSConfig()
+
+	httpServer := &http.Server{
+		Addr:    ":80",
+		Handler: manager.HTTPHandler(nil),
+	}
+
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil &&
+			err != http.ErrServerClosed {
+			log.Printf("AutoTLS HTTP listener error: %v", err)
+		}
+	}()
 
 	log.Printf("Starting server with AutoTLS on %s", domain)
 	return ignoreClosed(starter.startTLSServer(server))
