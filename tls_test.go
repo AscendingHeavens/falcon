@@ -224,7 +224,11 @@ func TestStartAutoTLS_ReturnsHTTPListenerError(t *testing.T) {
 	// Occupy an ephemeral port so that the injected listener fails to bind.
 	occupied, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer occupied.Close()
+	defer func() {
+		if err := occupied.Close(); err != nil {
+			t.Errorf("failed to close occupied listener: %v", err)
+		}
+	}()
 
 	original := listenTCP
 	listenTCP = func(network, address string) (net.Listener, error) {
