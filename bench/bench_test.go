@@ -1,3 +1,6 @@
+// Copyright 2026 Google LLC
+// SPDX-License-Identifier: MIT
+
 // Package bench compares Falcon against Gin and Echo.
 //
 // Run with: go test -bench . -benchmem

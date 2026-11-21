@@ -1,3 +1,6 @@
+// Copyright 2026 Google LLC
+// SPDX-License-Identifier: MIT
+
 // Command record runs the benchmarks and saves the output to
 // results/benchmark_test_dd-mm-yyyy-hh-mm.txt, showing it live as it runs.
 //

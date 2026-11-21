@@ -1,3 +1,6 @@
+// Copyright 2026 Google LLC
+// SPDX-License-Identifier: MIT
+
 // Package falcon is a fast Go web framework for structured code. Every handler returns a
 // response, every API response has the same shape, and every error takes the same path,
 // so your frontend never has to guess what it's getting.

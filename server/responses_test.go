@@ -1,3 +1,6 @@
+// Copyright 2026 Google LLC
+// SPDX-License-Identifier: MIT
+
 package server
 
 import (
@@ -38,8 +41,8 @@ func TestRawHelpers(t *testing.T) {
 		contentType string
 		body        string
 	}{
-		{"String", func(c *Context) *Response { return c.String(201, "Hello") }, 201, "text/plain", "Hello"},
-		{"HTML", func(c *Context) *Response { return c.HTML(200, "<h1>Hi</h1>") }, 200, "text/html", "<h1>Hi</h1>"},
+		{"String", func(c *Context) *Response { return c.String(201, "Hello") }, 201, "text/plain; charset=utf-8", "Hello"},
+		{"HTML", func(c *Context) *Response { return c.HTML(200, "<h1>Hi</h1>") }, 200, "text/html; charset=utf-8", "<h1>Hi</h1>"},
 		{"Blob", func(c *Context) *Response { return c.Blob(200, []byte{1, 2, 3}, "image/png") }, 200, "image/png", "\x01\x02\x03"},
 		{"Stream", func(c *Context) *Response { return c.Stream(202, "text/csv", strings.NewReader("a,b")) }, 202, "text/csv", "a,b"},
 	}

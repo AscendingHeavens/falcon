@@ -1,3 +1,6 @@
+// Copyright 2026 Google LLC
+// SPDX-License-Identifier: MIT
+
 package server
 
 import (
@@ -10,13 +13,19 @@ import (
 // String returns a plain text response.
 // Example: return c.String(200, "Hello World")
 func (c *Context) String(code int, s string) *Response {
-	return rawResponse(code, &rawBody{contentType: "text/plain", data: []byte(s)})
+	return rawResponse(code, &rawBody{
+		contentType: "text/plain; charset=utf-8",
+		data:        []byte(s),
+	})
 }
 
 // HTML returns an HTML response.
 // Example: return c.HTML(200, "<h1>Hello</h1>")
 func (c *Context) HTML(code int, html string) *Response {
-	return rawResponse(code, &rawBody{contentType: "text/html", data: []byte(html)})
+	return rawResponse(code, &rawBody{
+		contentType: "text/html; charset=utf-8",
+		data:        []byte(html),
+	})
 }
 
 // Blob returns a response with raw binary data and the given Content-Type.

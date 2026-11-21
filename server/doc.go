@@ -1,3 +1,6 @@
+// Copyright 2026 Google LLC
+// SPDX-License-Identifier: MIT
+
 // Package server holds the types a Falcon handler works with: the [Context] for each
 // request, the [Response] it returns, errors, validation, templates and the router.
 //

@@ -1,0 +1,54 @@
+# Copyright 2026 Google LLC
+# SPDX-License-Identifier: MIT
+
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: falcon-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+
+    steps:
+      - name: Create version, tag and GitHub Release
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          release-type: go
+          skip-github-pull-request: true
+
+      - name: Request Go module proxy indexing
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+        shell: bash
+        run: |
+          URL="https://proxy.golang.org/github.com/ascendingheavens/falcon/@v/${RELEASE_TAG}.info"
+
+          echo "Requesting Go proxy indexing for ${RELEASE_TAG}"
+
+          if curl --fail --silent --show-error \
+            --retry 10 \
+            --retry-all-errors \
+            --retry-delay 15 \
+            --retry-max-time 180 \
+            "$URL"; then
+            echo "Go proxy successfully responded."
+          else
+            echo "::warning::Go proxy has not indexed ${RELEASE_TAG} yet. The release was still created."
+          fi

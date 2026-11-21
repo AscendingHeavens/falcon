@@ -1,3 +1,6 @@
+// Copyright 2026 Google LLC
+// SPDX-License-Identifier: MIT
+
 package middleware
 
 import (
@@ -10,15 +13,14 @@ import (
 )
 
 // JWTMiddleware returns a middleware that validates JWT tokens in the Authorization header.
-// The token must use the "Bearer " scheme, e.g. "Authorization: Bearer <token>".
+// Tokens must use the Bearer scheme and contain a valid expiration claim.
 // It verifies the token using the provided HMAC secret.
-// If the token is invalid, missing, or has the wrong signing method, it returns a 401 Unauthorized response.
-// On success, the token claims are stored in the Context under the key "user" for access in handlers.
-//
-// Example usage:
-//
-//	app.Use(JWTMiddleware("supersecretkey"))
+// On success, claims are stored in the Context under the key "user".
 func JWTMiddleware(secret string) Middleware {
+	if secret == "" {
+		panic("JWTMiddleware: secret must not be empty")
+	}
+
 	return func(next server.HandlerFunc) server.HandlerFunc {
 		return func(c *server.Context) *server.Response {
 			auth := c.Request.Header.Get("Authorization")
@@ -28,20 +30,22 @@ func JWTMiddleware(secret string) Middleware {
 
 			tokenStr := strings.TrimPrefix(auth, "Bearer ")
 
-			// Parse and validate
-			token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
-				// Optional: enforce signing method
-				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, errors.New("unexpected signing method")
-				}
-				return []byte(secret), nil
-			})
+			token, err := jwt.Parse(
+				tokenStr,
+				func(t *jwt.Token) (interface{}, error) {
+					if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+						return nil, errors.New("unexpected signing method")
+					}
+
+					return []byte(secret), nil
+				},
+				jwt.WithExpirationRequired(),
+			)
 
 			if err != nil || !token.Valid {
 				return c.ErrorJSON("Invalid token", nil, http.StatusUnauthorized)
 			}
 
-			// Store claims in context for handlers
 			if claims, ok := token.Claims.(jwt.MapClaims); ok {
 				c.Set("user", claims)
 			}
