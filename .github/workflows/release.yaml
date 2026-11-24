@@ -1,5 +1,5 @@
-# Copyright 2026 Google LLC
 # SPDX-License-Identifier: MIT
+# Copyright 2026 Ascending Heavens
 
 name: Release
 
@@ -10,29 +10,27 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
+  issues: write
 
 concurrency:
-  group: falcon-release
+  group: release-please
   cancel-in-progress: false
 
 jobs:
   release:
-    name: Create Release
+    name: Release Please
     runs-on: ubuntu-latest
 
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-
     steps:
-      - name: Create version, tag and GitHub Release
+      - name: Create or update release PR
         id: release
         uses: googleapis/release-please-action@v4
         with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           release-type: go
-          skip-github-pull-request: true
 
-      - name: Request Go module proxy indexing
+      - name: Request Go proxy indexing
         if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
@@ -48,7 +46,7 @@ jobs:
             --retry-delay 15 \
             --retry-max-time 180 \
             "$URL"; then
-            echo "Go proxy successfully responded."
+            echo "Go proxy responded successfully."
           else
-            echo "::warning::Go proxy has not indexed ${RELEASE_TAG} yet. The release was still created."
+            echo "::warning::Go proxy indexing is not yet available."
           fi
